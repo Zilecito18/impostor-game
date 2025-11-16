@@ -162,21 +162,32 @@ class FootballService:
 
 football_service = FootballService()
 
-# ========== WEBSOCKETS MEJORADO ==========
+# ========== WEBSOCKETS CORREGIDO ==========
 async def broadcast_to_room(room_code: str, message: dict):
     """Enviar mensaje a todos en una sala"""
+    print(f"📢 [BROADCAST] Enviando a sala {room_code}. Conexiones activas: {len(active_connections.get(room_code, []))}")
+    print(f"📨 [BROADCAST] Mensaje: {message.get('type', 'unknown')}")
+    
     if room_code in active_connections:
         disconnected = []
-        for connection in active_connections[room_code]:
+        successful = 0
+        
+        for i, connection in enumerate(active_connections[room_code]):
             try:
                 await connection.send_json(message)
+                successful += 1
+                print(f"  ✅ [BROADCAST] Mensaje enviado a conexión {i+1}")
             except Exception as e:
-                print(f"Error enviando mensaje WebSocket: {e}")
+                print(f"  ❌ [BROADCAST] Error enviando a conexión {i+1}: {e}")
                 disconnected.append(connection)
+        
+        print(f"📊 [BROADCAST] Resumen: {successful} mensajes enviados, {len(disconnected)} errores")
         
         # Limpiar conexiones desconectadas
         for connection in disconnected:
             active_connections[room_code].remove(connection)
+    else:
+        print(f"❌ [BROADCAST] No hay conexiones activas en la sala {room_code}")
 
 @app.websocket("/api/ws/{room_code}")
 async def websocket_endpoint(websocket: WebSocket, room_code: str):
@@ -189,7 +200,7 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
     active_connections[room_code].append(websocket)
     
     room = rooms_db.get(room_code)
-    print(f"🔗 WebSocket conectado a sala {room_code}. Conexiones: {len(active_connections[room_code])}")
+    print(f"🔗 [WS] WebSocket conectado a sala {room_code}. Conexiones totales: {len(active_connections[room_code])}")
     
     try:
         # Enviar estado actual al conectar
@@ -206,11 +217,10 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
             
             try:
                 message_data = json.loads(data)
-                print(f"📨 Mensaje recibido en {room_code}: {message_data}")
+                message_type = message_data.get("type")
+                print(f"📨 [WS] Mensaje recibido en {room_code}: {message_type}")
                 
                 # Manejar diferentes tipos de mensajes
-                message_type = message_data.get("type")
-                
                 if message_type == "chat_message":
                     await broadcast_to_room(room_code, {
                         "type": "chat_message",
@@ -237,12 +247,26 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
                     })
                 
                 elif message_type == "start_game":
-                    # Lógica para iniciar juego
+                    print(f"🎮 [WS] Solicitando inicio de juego en sala {room_code}")
+                    # ✅ CORREGIDO: Lógica para iniciar juego
                     if room and not room.game_started:
                         await start_game_internal(room_code)
+                    else:
+                        # Informar al cliente que no se puede iniciar
+                        error_msg = "No se puede iniciar el juego"
+                        if not room:
+                            error_msg = "Sala no encontrada"
+                        elif room.game_started:
+                            error_msg = "El juego ya comenzó"
+                        
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": error_msg
+                        })
+                        print(f"❌ [WS] {error_msg} en sala {room_code}")
                 
                 else:
-                    # Echo para otros mensajes
+                    # Echo solo para el remitente
                     await websocket.send_json({
                         "type": "echo",
                         "received": message_data,
@@ -256,12 +280,12 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
                 })
             
     except Exception as e:
-        print(f"❌ WebSocket error en {room_code}: {e}")
+        print(f"❌ [WS] WebSocket error en {room_code}: {e}")
     finally:
         # Limpiar al desconectar
         if room_code in active_connections and websocket in active_connections[room_code]:
             active_connections[room_code].remove(websocket)
-            print(f"🔌 WebSocket desconectado de {room_code}. Restantes: {len(active_connections[room_code])}")
+            print(f"🔌 [WS] WebSocket desconectado de {room_code}. Restantes: {len(active_connections[room_code])}")
 
 # ========== ENDPOINTS HTTP ==========
 @app.post("/api/rooms/create")
@@ -288,9 +312,10 @@ async def create_room(room_data: RoomCreate):
     )
     
     rooms_db[code] = room
-    active_connections[code] = []
+    if code not in active_connections:
+        active_connections[code] = []
     
-    print(f"✅ Sala creada: {code} por {room_data.player_name}")
+    print(f"✅ [API] Sala creada: {code} por {room_data.player_name}")
     
     return {
         "success": True,
@@ -303,7 +328,8 @@ async def create_room(room_data: RoomCreate):
 @app.post("/api/rooms/join")
 async def join_room(join_data: RoomJoin):
     """Unirse a una sala existente"""
-    room = rooms_db.get(join_data.room_code.upper())
+    room_code = join_data.room_code.upper()
+    room = rooms_db.get(room_code)
     if not room:
         raise HTTPException(status_code=404, detail="Sala no encontrada")
     
@@ -325,10 +351,10 @@ async def join_room(join_data: RoomJoin):
     
     room.players.append(new_player)
     
-    print(f"✅ {join_data.player_name} se unió a la sala {join_data.room_code}")
+    print(f"✅ [API] {join_data.player_name} se unió a la sala {room_code}")
     
     # Notificar a todos via WebSocket
-    await broadcast_to_room(join_data.room_code.upper(), {
+    await broadcast_to_room(room_code, {
         "type": "player_joined",
         "message": f"{join_data.player_name} se unió a la sala",
         "room": room.dict(),
@@ -339,7 +365,7 @@ async def join_room(join_data: RoomJoin):
         "success": True,
         "room": room.dict(),
         "player_id": new_player.id,
-        "message": f"Te uniste a la sala {join_data.room_code}"
+        "message": f"Te uniste a la sala {room_code}"
     }
 
 @app.get("/api/rooms/{room_code}")
@@ -358,12 +384,18 @@ async def start_game_internal(room_code: str):
     """Lógica interna para iniciar juego"""
     room = rooms_db.get(room_code)
     if not room:
+        print(f"❌ [GAME] Sala {room_code} no encontrada")
         return
     
     if len(room.players) < 2:
+        print(f"❌ [GAME] No hay suficientes jugadores en {room_code}: {len(room.players)}")
         raise HTTPException(status_code=400, detail="Se necesitan al menos 2 jugadores")
     
-    print(f"🎮 Iniciando juego en sala {room_code} con {len(room.players)} jugadores")
+    print(f"🎮 [GAME] Iniciando juego en sala {room_code} con {len(room.players)} jugadores")
+    
+    # ✅ AGREGAR LOGS DE DIAGNÓSTICO
+    active_conn_count = len(active_connections.get(room_code, []))
+    print(f"🔊 [GAME] Conexiones activas en {room_code}: {active_conn_count}")
     
     # Obtener jugadores de fútbol
     football_players = await football_service.get_players()
@@ -372,6 +404,7 @@ async def start_game_internal(room_code: str):
     # Asignar impostor
     impostor = random.choice(room.players)
     impostor.is_impostor = True
+    print(f"🎭 [GAME] Impostor asignado: {impostor.name} (ID: {impostor.id})")
     
     # Asignar jugadores de fútbol
     assigned_players = {}
@@ -384,28 +417,40 @@ async def start_game_internal(room_code: str):
             # Solo los jugadores normales conocen su personaje
             if player.id != impostor.id:
                 player.assigned_player = player_data
+                print(f"👤 [GAME] {player.name} asignado a: {player_data['name']}")
+            else:
+                print(f"🕵️ [GAME] {player.name} es el IMPOSTOR")
     
     room.status = "playing"
     room.game_started = True
     
-    # Notificar inicio del juego via WebSocket
-    await broadcast_to_room(room_code, {
+    # ✅ MENSAJE COMPLETO PARA BROADCAST
+    game_started_message = {
         "type": "game_started",
         "message": "¡El juego ha comenzado!",
         "room": room.dict(),
         "impostor_id": impostor.id,
         "assigned_players": assigned_players,
-        "football_players": available_football_players
-    })
+        "football_players": available_football_players,
+        "timestamp": datetime.now().isoformat()
+    }
     
-    print(f"✅ Juego iniciado en {room_code}. Impostor: {impostor.name}")
+    print(f"📤 [GAME] Enviando mensaje 'game_started' a {active_conn_count} conexiones")
+    
+    # Notificar inicio del juego via WebSocket
+    await broadcast_to_room(room_code, game_started_message)
+    
+    print(f"✅ [GAME] Juego iniciado en {room_code}. Impostor: {impostor.name}")
 
 @app.post("/api/game/{room_code}/start")
 async def start_game(room_code: str):
     """Iniciar el juego en una sala"""
-    await start_game_internal(room_code.upper())
+    room_code_upper = room_code.upper()
+    print(f"🎯 [API] Solicitando inicio de juego para sala: {room_code_upper}")
     
-    room = rooms_db.get(room_code.upper())
+    await start_game_internal(room_code_upper)
+    
+    room = rooms_db.get(room_code_upper)
     return {
         "success": True,
         "message": "Juego iniciado",
@@ -499,7 +544,12 @@ async def debug_rooms():
     """Endpoint de debug para ver todas las salas"""
     return {
         "total_rooms": len(rooms_db),
-        "rooms": {code: room.dict() for code, room in rooms_db.items()},
+        "rooms": {code: {
+            "player_count": len(room.players),
+            "players": [p.name for p in room.players],
+            "game_started": room.game_started,
+            "status": room.status
+        } for code, room in rooms_db.items()},
         "active_connections": {code: len(conns) for code, conns in active_connections.items()}
     }
 
