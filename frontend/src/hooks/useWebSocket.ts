@@ -22,7 +22,7 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
   
   const socketRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<number | null>(null); // Cambiado a number | null
+  const reconnectTimeoutRef = useRef<number | null>(null); // ✅ Cambiado a number | null
   const messageQueueRef = useRef<WebSocketMessage[]>([]);
 
   const connect = useCallback(() => {
@@ -40,7 +40,9 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
     setConnectionStatus('connecting');
 
     try {
-      const ws = new WebSocket(`${API_CONFIG.WS_URL}/ws/${roomCode}`);
+      // Asegúrate de que la URL sea correcta
+      const wsUrl = API_CONFIG.WS_URL || `ws://localhost:8000`;
+      const ws = new WebSocket(`${wsUrl}/ws/${roomCode}`);
       socketRef.current = ws;
 
       ws.onopen = () => {
@@ -69,34 +71,36 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
             case 'player_left':
             case 'game_started':
             case 'game_updated':
-            case 'round_started':
-            case 'round_ended':
               if (data.room || data.gameState) {
                 setGameState(data.room || data.gameState);
               }
               break;
               
-            case 'chat_message':
-              setMessages(prev => [...prev, data]);
-              break;
-              
-            case 'player_ready':
-            case 'player_answer':
+            case 'player_ready_update':
+            case 'all_players_ready':
+            case 'answer_submitted':
             case 'vote_submitted':
+            case 'voting_complete':
+            case 'phase_changed':
               if (data.room) {
                 setGameState(data.room);
               }
+              break;
+              
+            case 'chat_message':
+              setMessages(prev => [...prev, {
+                playerId: data.playerId,
+                message: data.message,
+                timestamp: data.timestamp
+              }]);
               break;
               
             case 'error':
               console.error('❌ Error del servidor:', data.message);
               break;
               
-            case 'message_received':
-              break;
-              
             default:
-              console.log('⚠️ Mensaje no manejado:', data.type);
+              console.log('⚠️ Mensaje no manejado:', data.type, data);
           }
         } catch (error) {
           console.error('❌ Error parsing WebSocket message:', error);
@@ -111,7 +115,7 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
         // Reconexión automática solo si no fue un cierre intencional
         if (event.code !== 1000) {
           console.log('🔄 Intentando reconexión en 3 segundos...');
-          reconnectTimeoutRef.current = window.setTimeout(() => {
+          reconnectTimeoutRef.current = window.setTimeout(() => { // ✅ Usar window.setTimeout
             connect();
           }, 3000);
         }
@@ -132,8 +136,8 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
   const disconnect = useCallback(() => {
     // Limpiar timeout de reconexión
     if (reconnectTimeoutRef.current !== null) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null; // Solo establecemos a null
+      window.clearTimeout(reconnectTimeoutRef.current); // ✅ Usar window.clearTimeout
+      reconnectTimeoutRef.current = null;
     }
     
     if (socketRef.current) {
@@ -165,35 +169,21 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
   const reconnect = useCallback(() => {
     console.log('🔄 Reconexión manual solicitada');
     disconnect();
-    // Pequeño delay antes de reconectar
-    setTimeout(() => {
+    reconnectTimeoutRef.current = window.setTimeout(() => { // ✅ Usar window.setTimeout
       connect();
     }, 100);
   }, [disconnect, connect]);
 
   // Efecto principal de conexión
   useEffect(() => {
-    connect();
+    if (roomCode) {
+      connect();
+    }
     
     return () => {
       disconnect();
     };
-  }, [connect, disconnect]);
-
-  // Efecto para manejar cambios de roomCode
-  useEffect(() => {
-    if (roomCode) {
-      disconnect();
-      // Pequeño delay antes de conectar con el nuevo roomCode
-      const timeoutId = window.setTimeout(() => {
-        connect();
-      }, 100);
-      
-      return () => {
-        clearTimeout(timeoutId);
-      };
-    }
-  }, [roomCode, disconnect, connect]);
+  }, [connect, disconnect, roomCode]);
 
   return {
     isConnected,
