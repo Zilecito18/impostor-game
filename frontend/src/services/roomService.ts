@@ -1,4 +1,4 @@
-import { API_CONFIG } from '../config/api';
+// frontend/src/services/roomService.ts
 
 export interface CreateRoomData {
   player_name: string;
@@ -16,7 +16,8 @@ class RoomService {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = API_CONFIG.BASE_URL;
+    // ✅ CORREGIDO: Usar URL directa en lugar de API_CONFIG
+    this.baseUrl = 'https://impostor-game-backend-pl8h.onrender.com';
     console.log(`🎯 RoomService inicializado con base URL: ${this.baseUrl}`);
   }
 
@@ -24,6 +25,7 @@ class RoomService {
     console.log('📝 Creando sala con datos:', roomData);
     
     try {
+      // ✅ CORREGIDO: URL correcta (sin /api duplicado)
       const response = await fetch(`${this.baseUrl}/api/rooms/create`, {
         method: 'POST',
         headers: {
@@ -68,7 +70,6 @@ class RoomService {
         const errorText = await response.text();
         console.error('❌ Error unirse sala:', errorText);
         
-        // Parsear error específico del backend si es posible
         try {
           const errorJson = JSON.parse(errorText);
           throw new Error(errorJson.detail || errorText);
@@ -96,7 +97,6 @@ class RoomService {
       console.log(`📨 Respuesta obtener sala - Status: ${response.status}`);
 
       if (!response.ok) {
-        // Si es error 404, la sala no existe
         if (response.status === 404) {
           throw new Error('Sala no encontrada');
         }
@@ -130,7 +130,6 @@ class RoomService {
         const errorText = await response.text();
         console.error('❌ Error iniciar juego:', errorText);
         
-        // Parsear error específico del backend si es posible
         try {
           const errorJson = JSON.parse(errorText);
           throw new Error(errorJson.detail || errorText);
