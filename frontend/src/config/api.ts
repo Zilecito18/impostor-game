@@ -1,6 +1,7 @@
 // frontend/src/services/api.ts
 export const API_CONFIG = {
-  BASE_URL: 'http://localhost:8000',  // Backend FastAPI
+  BASE_URL: 'http://localhost:8000',   // Backend FastAPI
+  WS_URL: 'ws://localhost:8000',       // WebSocket FastAPI
 };
 
 const API_BASE_URL = `${API_CONFIG.BASE_URL}/api`;
