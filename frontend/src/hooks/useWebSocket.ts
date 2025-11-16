@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { API_CONFIG } from '../config/api';
 
 interface WebSocketMessage {
   type: string;
@@ -22,8 +21,13 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
   
   const socketRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<number | null>(null); // ✅ Cambiado a number | null
+  const reconnectTimeoutRef = useRef<number | null>(null);
   const messageQueueRef = useRef<WebSocketMessage[]>([]);
+
+  const getWebSocketUrl = useCallback((roomCode: string) => {
+    const baseUrl = 'wss://impostor-game-backend-pl8h.onrender.com';
+    return `${baseUrl}/api/ws/${roomCode}`;
+  }, []);
 
   const connect = useCallback(() => {
     if (!roomCode) {
@@ -40,17 +44,17 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
     setConnectionStatus('connecting');
 
     try {
-      // Asegúrate de que la URL sea correcta
-      const wsUrl = API_CONFIG.WS_URL || `ws://localhost:8000`;
-      const ws = new WebSocket(`${wsUrl}/ws/${roomCode}`);
+      const wsUrl = getWebSocketUrl(roomCode);
+      console.log('🌐 WebSocket URL:', wsUrl);
+      
+      const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
       ws.onopen = () => {
-        console.log('✅ WebSocket conectado');
+        console.log('✅ WebSocket conectado exitosamente');
         setIsConnected(true);
         setConnectionStatus('connected');
         
-        // Enviar mensajes en cola
         if (messageQueueRef.current.length > 0) {
           console.log(`📨 Enviando ${messageQueueRef.current.length} mensajes en cola`);
           messageQueueRef.current.forEach(message => {
@@ -65,18 +69,19 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
           const data = JSON.parse(event.data);
           console.log('📨 Mensaje WebSocket recibido:', data);
           
-          // Manejar diferentes tipos de mensajes
           switch (data.type) {
             case 'player_joined':
             case 'player_left':
             case 'game_started':
             case 'game_updated':
-              if (data.room || data.gameState) {
-                setGameState(data.room || data.gameState);
+            case 'room_state':
+              if (data.room) {
+                console.log('🔄 Actualizando estado de la sala:', data.room);
+                setGameState(data.room);
               }
               break;
               
-            case 'player_ready_update':
+            case 'player_ready':
             case 'all_players_ready':
             case 'answer_submitted':
             case 'vote_submitted':
@@ -89,7 +94,7 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
               
             case 'chat_message':
               setMessages(prev => [...prev, {
-                playerId: data.playerId,
+                playerName: data.player_name,
                 message: data.message,
                 timestamp: data.timestamp
               }]);
@@ -112,10 +117,9 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
         setIsConnected(false);
         setConnectionStatus('disconnected');
         
-        // Reconexión automática solo si no fue un cierre intencional
-        if (event.code !== 1000) {
+        if (event.code !== 1000 && roomCode) {
           console.log('🔄 Intentando reconexión en 3 segundos...');
-          reconnectTimeoutRef.current = window.setTimeout(() => { // ✅ Usar window.setTimeout
+          reconnectTimeoutRef.current = window.setTimeout(() => {
             connect();
           }, 3000);
         }
@@ -125,18 +129,30 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
         console.error('❌ WebSocket error:', error);
         setIsConnected(false);
         setConnectionStatus('error');
+        
+        if (roomCode) {
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            console.log('🔄 Reconectando después de error...');
+            connect();
+          }, 5000);
+        }
       };
 
     } catch (error) {
       console.error('❌ Error creando WebSocket:', error);
       setConnectionStatus('error');
+      
+      if (roomCode) {
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          connect();
+        }, 5000);
+      }
     }
-  }, [roomCode]);
+  }, [roomCode, getWebSocketUrl]);
 
   const disconnect = useCallback(() => {
-    // Limpiar timeout de reconexión
     if (reconnectTimeoutRef.current !== null) {
-      window.clearTimeout(reconnectTimeoutRef.current); // ✅ Usar window.clearTimeout
+      window.clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
     
@@ -145,6 +161,9 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
       socketRef.current.close(1000, 'Manual disconnect');
       socketRef.current = null;
     }
+    
+    setIsConnected(false);
+    setConnectionStatus('disconnected');
   }, []);
 
   const sendMessage = useCallback((type: string, data: any = {}): boolean => {
@@ -159,7 +178,7 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
       messageQueueRef.current.push(message);
       
       if (!isConnected && roomCode) {
-        console.log('🔄 Intentando reconectar...');
+        console.log('🔄 WebSocket no conectado, intentando reconectar...');
         connect();
       }
       return false;
@@ -169,18 +188,22 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
   const reconnect = useCallback(() => {
     console.log('🔄 Reconexión manual solicitada');
     disconnect();
-    reconnectTimeoutRef.current = window.setTimeout(() => { // ✅ Usar window.setTimeout
+    reconnectTimeoutRef.current = window.setTimeout(() => {
       connect();
     }, 100);
   }, [disconnect, connect]);
 
-  // Efecto principal de conexión
   useEffect(() => {
     if (roomCode) {
+      console.log('🎯 Iniciando conexión WebSocket para sala:', roomCode);
       connect();
+    } else {
+      console.log('❌ No hay roomCode, desconectando...');
+      disconnect();
     }
     
     return () => {
+      console.log('🧹 Limpiando WebSocket');
       disconnect();
     };
   }, [connect, disconnect, roomCode]);
@@ -195,38 +218,27 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
   };
 };
 
-// Hook auxiliar para tipos de mensajes comunes
+// ✅ VERSIÓN CORREGIDA
 export const useWebSocketActions = (sendMessage: (type: string, data?: any) => boolean) => {
-  const sendChatMessage = useCallback((message: string, playerId: string) => {
-    return sendMessage('chat_message', { message, playerId });
+  const sendChatMessage = useCallback((message: string, playerName: string) => {
+    return sendMessage('chat_message', { message, player_name: playerName });
   }, [sendMessage]);
 
-  const joinRoom = useCallback((playerId: string, playerName: string) => {
-    return sendMessage('player_join', { playerId, playerName });
+  const setPlayerReady = useCallback((playerId: string, playerName: string, isReady: boolean = true) => {
+    return sendMessage('player_ready', { 
+      player_id: playerId, 
+      player_name: playerName, 
+      is_ready: isReady 
+    });
   }, [sendMessage]);
 
-  const leaveRoom = useCallback((playerId: string) => {
-    return sendMessage('player_leave', { playerId });
-  }, [sendMessage]);
-
-  const startGame = useCallback((playerId: string) => {
-    return sendMessage('game_start', { playerId });
-  }, [sendMessage]);
-
-  const submitAnswer = useCallback((playerId: string, answer: any, roundId: string) => {
-    return sendMessage('player_answer', { playerId, answer, roundId });
-  }, [sendMessage]);
-
-  const submitVote = useCallback((playerId: string, votedPlayerId: string, roundId: string) => {
-    return sendMessage('player_vote', { playerId, votedPlayerId, roundId });
+  const startGame = useCallback(() => {
+    return sendMessage('start_game', {});
   }, [sendMessage]);
 
   return {
     sendChatMessage,
-    joinRoom,
-    leaveRoom,
-    startGame,
-    submitAnswer,
-    submitVote
+    setPlayerReady,
+    startGame
   };
 };

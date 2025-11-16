@@ -15,7 +15,9 @@ class ApiService {
   }
 
   private buildUrl(endpoint: string) {
-    return `${this.baseUrl}/${endpoint.replace(/^\/+/, '')}`;
+    // CORREGIDO: Maneja correctamente las barras
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+    return `${this.baseUrl}/${cleanEndpoint}`;
   }
 
   async get(endpoint: string) {
