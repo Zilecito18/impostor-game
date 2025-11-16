@@ -27,7 +27,7 @@ export const useWebSocket = (roomCode: string | null): WebSocketHook => {
 
   const connect = useCallback(() => {
     if (!roomCode) {
-      console.log('🚫 No hay roomCode, no se puede conectar');
+      console.log('No hay roomCode, no se puede conectar');
       return;
     }
 

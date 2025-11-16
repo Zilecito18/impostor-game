@@ -1,11 +1,11 @@
 // frontend/src/services/api.ts
-const API_BASE_URL = 'https://impostor-game-backend-pl8h.onrender.com/'; // Tu backend FastAPI
+const API_BASE_URL = 'https://impostor-game-backend-pl8h.onrender.com/api';
 
 class ApiService {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = API_BASE_URL; // ✅ Usa la constante local, no API_CONFIG
+    this.baseUrl = API_BASE_URL;
   }
 
   private getHeaders(): HeadersInit {
@@ -14,16 +14,19 @@ class ApiService {
     };
   }
 
+  private buildUrl(endpoint: string) {
+    return `${this.baseUrl}/${endpoint.replace(/^\/+/, '')}`;
+  }
+
   async get(endpoint: string) {
-    // ✅ URL directa a TU backend (no a The Sports DB)
-    const url = `${this.baseUrl}${endpoint}`;
-    
+    const url = this.buildUrl(endpoint);
+
     console.log('🌐 Fetching from:', url);
-    
+
     const response = await fetch(url, {
       headers: this.getHeaders(),
     });
-    
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -32,10 +35,10 @@ class ApiService {
   }
 
   async post(endpoint: string, data: any) {
-    const url = `${this.baseUrl}${endpoint}`;
-    
+    const url = this.buildUrl(endpoint);
+
     console.log('🌐 POST to:', url, data);
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: this.getHeaders(),

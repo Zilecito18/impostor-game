@@ -1,7 +1,7 @@
 // frontend/src/services/api.ts
 export const API_CONFIG = {
-  BASE_URL: 'http://localhost:8000',   // Backend FastAPI
-  WS_URL: 'ws://localhost:8000',       // WebSocket FastAPI
+  BASE_URL: 'https://impostor-game-backend-pl8h.onrender.com',
+  WS_URL: 'wss://impostor-game-backend-pl8h.onrender.com',
 };
 
 const API_BASE_URL = `${API_CONFIG.BASE_URL}/api`;
