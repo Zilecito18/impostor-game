@@ -1,9 +1,21 @@
+# REEMPLAZA estas versiones problemáticas:
 fastapi==0.104.1
-uvicorn==0.24.0
+uvicorn[standard]==0.24.0
 websockets==12.0
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 python-dotenv==1.0.0
 aiohttp==3.9.1
 pydantic==2.5.0
+python-multipart==0.0.6
+
+# POR estas versiones compatibles:
+fastapi==0.100.0
+uvicorn[standard]==0.23.2
+websockets==11.0.3
+sqlalchemy==2.0.20
+psycopg2-binary==2.9.7
+python-dotenv==1.0.0
+aiohttp==3.8.5
+pydantic==1.10.12
 python-multipart==0.0.6
