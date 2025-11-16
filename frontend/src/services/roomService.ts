@@ -1,5 +1,4 @@
 // frontend/src/services/roomService.ts
-
 export interface CreateRoomData {
   player_name: string;
   max_players?: number;
@@ -16,7 +15,6 @@ class RoomService {
   private baseUrl: string;
 
   constructor() {
-    // ✅ CORREGIDO: Usar URL directa en lugar de API_CONFIG
     this.baseUrl = 'https://impostor-game-backend-pl8h.onrender.com';
     console.log(`🎯 RoomService inicializado con base URL: ${this.baseUrl}`);
   }
@@ -25,7 +23,6 @@ class RoomService {
     console.log('📝 Creando sala con datos:', roomData);
     
     try {
-      // ✅ CORREGIDO: URL correcta (sin /api duplicado)
       const response = await fetch(`${this.baseUrl}/api/rooms/create`, {
         method: 'POST',
         headers: {
@@ -69,13 +66,7 @@ class RoomService {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Error unirse sala:', errorText);
-        
-        try {
-          const errorJson = JSON.parse(errorText);
-          throw new Error(errorJson.detail || errorText);
-        } catch {
-          throw new Error(errorText || `Error HTTP! status: ${response.status}`);
-        }
+        throw new Error(errorText || `Error HTTP! status: ${response.status}`);
       }
 
       const result = await response.json();
@@ -129,13 +120,7 @@ class RoomService {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Error iniciar juego:', errorText);
-        
-        try {
-          const errorJson = JSON.parse(errorText);
-          throw new Error(errorJson.detail || errorText);
-        } catch {
-          throw new Error(errorText || `Error HTTP! status: ${response.status}`);
-        }
+        throw new Error(errorText || `Error HTTP! status: ${response.status}`);
       }
 
       const result = await response.json();
@@ -147,48 +132,6 @@ class RoomService {
       throw error;
     }
   }
-
-  // Método adicional para debug
-  async debugRooms() {
-    try {
-      const response = await fetch(`${this.baseUrl}/debug/rooms`);
-      if (!response.ok) {
-        throw new Error(`Error HTTP! status: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error obteniendo debug info:', error);
-      return { error: 'No se pudo obtener información de debug' };
-    }
-  }
-
-  // Método para verificar conexión con el backend
-  async healthCheck() {
-    try {
-      const response = await fetch(`${this.baseUrl}/`);
-      if (!response.ok) {
-        throw new Error(`Backend no responde correctamente. Status: ${response.status}`);
-      }
-      const data = await response.json();
-      return { success: true, message: 'Backend conectado', data };
-    } catch (error) {
-      console.error('❌ Health check falló:', error);
-      return { 
-        success: false, 
-        message: 'No se pudo conectar con el backend',
-        error: error instanceof Error ? error.message : 'Error desconocido'
-      };
-    }
-  }
 }
 
 export const roomService = new RoomService();
-
-// Health check automático al cargar el servicio
-roomService.healthCheck().then(result => {
-  if (result.success) {
-    console.log('🏥 Health check exitoso:', result.message);
-  } else {
-    console.warn('⚠️ Health check falló:', result.message);
-  }
-});
