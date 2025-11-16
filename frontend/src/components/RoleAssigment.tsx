@@ -1,23 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import type { Room, FootballPlayer } from '../types/game';
+import { footballService } from '../services/footballService';
 
 interface RoleAssignmentProps {
   room: Room;
   currentPlayerName: string;
   onGameStart: () => void;
 }
-
-// Datos de ejemplo de jugadores de fútbol
-const footballPlayers: FootballPlayer[] = [
-  { id: '1', name: 'Lionel Messi', team: 'Inter Miami', position: 'Delantero', nationality: 'Argentina' },
-  { id: '2', name: 'Cristiano Ronaldo', team: 'Al Nassr', position: 'Delantero', nationality: 'Portugal' },
-  { id: '3', name: 'Kylian Mbappé', team: 'PSG', position: 'Delantero', nationality: 'Francia' },
-  { id: '4', name: 'Kevin De Bruyne', team: 'Manchester City', position: 'Mediocampista', nationality: 'Bélgica' },
-  { id: '5', name: 'Virgil van Dijk', team: 'Liverpool', position: 'Defensa', nationality: 'Países Bajos' },
-  { id: '6', name: 'Robert Lewandowski', team: 'Barcelona', position: 'Delantero', nationality: 'Polonia' },
-  { id: '7', name: 'Erling Haaland', team: 'Manchester City', position: 'Delantero', nationality: 'Noruega' },
-  { id: '8', name: 'Luka Modrić', team: 'Real Madrid', position: 'Mediocampista', nationality: 'Croacia' },
-];
 
 const RoleAssignment: React.FC<RoleAssignmentProps> = ({ 
   room, 
@@ -28,9 +17,34 @@ const RoleAssignment: React.FC<RoleAssignmentProps> = ({
   const [assignedPlayer, setAssignedPlayer] = useState<FootballPlayer | null>(null);
   const [isImpostor, setIsImpostor] = useState(false);
   const [impostorClue, setImpostorClue] = useState<string>('');
+  const [footballPlayers, setFootballPlayers] = useState<FootballPlayer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Cargar jugadores reales de la API
+  useEffect(() => {
+    const loadRealPlayers = async () => {
+      try {
+        setLoading(true);
+        const players = await footballService.getGamePlayers();
+        setFootballPlayers(players);
+        setError(null);
+        console.log('Jugadores cargados:', players.length);
+      } catch (err) {
+        setError('Error cargando jugadores de la API');
+        console.error('Error loading players from API:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRealPlayers();
+  }, []);
 
   useEffect(() => {
-    // Simular asignación de roles (luego vendrá del backend)
+    // Esperar a que se carguen los jugadores antes de empezar el countdown
+    if (loading || footballPlayers.length === 0) return;
+
     const timer = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
@@ -43,29 +57,77 @@ const RoleAssignment: React.FC<RoleAssignmentProps> = ({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [loading, footballPlayers]);
 
   const assignRoles = () => {
-    // Lógica temporal de asignación
+    if (footballPlayers.length === 0) {
+      console.error('No hay jugadores disponibles de la API');
+      return;
+    }
+
+    // Seleccionar jugador aleatorio de la API
     const randomPlayer = footballPlayers[Math.floor(Math.random() * footballPlayers.length)];
     const randomIsImpostor = Math.random() < 0.3; // 30% de chance de ser impostor
 
     setAssignedPlayer(randomPlayer);
     setIsImpostor(randomIsImpostor);
 
-    // Si es impostor, generar una pista aleatoria
+    // Si es impostor, generar una pista aleatoria basada en datos reales
     if (randomIsImpostor) {
-      const clues = [
-        `Juega en: ${randomPlayer.team}`,
-        `Posición: ${randomPlayer.position}`,
-        `Nacionalidad: ${randomPlayer.nationality}`,
-        `Es ${randomPlayer.position.toLowerCase()}`,
-        `Equipo: ${randomPlayer.team}`
-      ];
+      const clues = generateClues(randomPlayer);
       const randomClue = clues[Math.floor(Math.random() * clues.length)];
       setImpostorClue(randomClue);
     }
   };
+
+  const generateClues = (player: FootballPlayer): string[] => {
+    const clues = [];
+    
+    if (player.team) clues.push(`Juega en: ${player.team}`);
+    if (player.position && player.position !== 'Jugador') clues.push(`Posición: ${player.position}`);
+    if (player.nationality) clues.push(`Nacionalidad: ${player.nationality}`);
+    if (player.position && player.position !== 'Jugador') clues.push(`Es ${player.position.toLowerCase()}`);
+    if (player.team) clues.push(`Equipo: ${player.team}`);
+    
+    // Si no hay suficientes pistas, agregar genéricas
+    if (clues.length < 2) {
+      clues.push('Jugador de fútbol profesional', 'Juega en liga importante');
+    }
+    
+    return clues;
+  };
+
+  // Estados de carga y error
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl font-bold mb-4">Cargando Jugadores...</div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-xl text-purple-200">Obteniendo datos reales de futbolistas</p>
+          <p className="text-purple-300 mt-2">Desde The Sports DB API</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl font-bold mb-4">⚠️ Error</div>
+          <p className="text-xl text-red-200 mb-4">{error}</p>
+          <p className="text-purple-200">Usando datos de respaldo...</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-4 px-6 py-2 bg-blue-600 rounded-lg hover:bg-blue-700"
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (countdown > 0) {
     return (
@@ -73,7 +135,9 @@ const RoleAssignment: React.FC<RoleAssignmentProps> = ({
         <div className="text-center">
           <div className="text-6xl font-bold mb-4">{countdown}</div>
           <p className="text-xl text-purple-200">Asignando roles...</p>
-          <p className="text-purple-300 mt-2">Prepárate para el juego</p>
+          <p className="text-purple-300 mt-2">
+            {footballPlayers.length} jugadores reales cargados
+          </p>
         </div>
       </div>
     );
@@ -97,6 +161,9 @@ const RoleAssignment: React.FC<RoleAssignmentProps> = ({
               : 'Encuentra al impostor antes de que sea demasiado tarde'
             }
           </p>
+          <div className="mt-2 text-sm text-gray-500">
+            Datos en tiempo real de The Sports DB
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -154,8 +221,22 @@ const RoleAssignment: React.FC<RoleAssignmentProps> = ({
                 <h3 className="text-3xl font-bold mb-2">{assignedPlayer.name}</h3>
                 <div className="space-y-2 text-lg">
                   <p><strong>Equipo:</strong> {assignedPlayer.team}</p>
-                  <p><strong>Posición:</strong> {assignedPlayer.position}</p>
+                  {assignedPlayer.position && assignedPlayer.position !== 'Jugador' && (
+                    <p><strong>Posición:</strong> {assignedPlayer.position}</p>
+                  )}
                   <p><strong>Nacionalidad:</strong> {assignedPlayer.nationality}</p>
+                  {assignedPlayer.thumb && (
+                    <div className="mt-4">
+                      <img 
+                        src={assignedPlayer.thumb} 
+                        alt={assignedPlayer.name}
+                        className="w-24 h-24 mx-auto rounded-full object-cover border-2 border-blue-500"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="mt-6 p-4 bg-blue-800 rounded-lg">
                   <p className="text-blue-200">
@@ -173,6 +254,9 @@ const RoleAssignment: React.FC<RoleAssignmentProps> = ({
                   <h4 className="font-bold text-yellow-300 mb-2">Tu Pista:</h4>
                   <p className="text-yellow-200 text-lg">{impostorClue}</p>
                 </div>
+                <div className="mt-4 text-xs text-gray-500">
+                  Información real de la base de datos
+                </div>
               </div>
             )}
           </div>
@@ -187,7 +271,10 @@ const RoleAssignment: React.FC<RoleAssignmentProps> = ({
             {isImpostor ? 'Comenzar como Impostor' : 'Comenzar Juego'}
           </button>
           <p className="text-gray-400 mt-2">
-            {room.rounds} rondas - {room.players.length} jugadores
+            {room.rounds} rondas - {room.players.length} jugadores - {footballPlayers.length} futbolistas disponibles
+          </p>
+          <p className="text-gray-500 text-sm mt-1">
+            Datos proporcionados por The Sports DB
           </p>
         </div>
 

@@ -15,12 +15,12 @@ export interface Room {
     maxPlayers: number;
     rounds: number;
     players: Player[];
-    status: 'waiting' | 'role_assignment' | 'question' | 'debate' | 'voting' | 'results' | 'finished';
+    status: 'waiting' | 'playing' | 'finished'; // ← AGREGAR ESTA LÍNEA
+    debateMode: boolean;
+    debateTime: number;
     currentRound?: number;
     totalRounds?: number;
-    debateMode: boolean;  // ← AÑADIR ESTA LÍNEA
-    debateTime: number;   // ← AÑADIR ESTA LÍNEA
-    }
+}
 
 export interface FootballPlayer {
     id: string;
@@ -28,6 +28,9 @@ export interface FootballPlayer {
     team: string;
     position: string;
     nationality: string;
+    thumb?: string; // ← Agregar esta propiedad opcional
+    stadium?: string; // ← Opcional también
+    description?: string; // ← Opcional también
 }
 
 export interface Question {
