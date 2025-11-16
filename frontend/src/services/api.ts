@@ -1,5 +1,5 @@
 // frontend/src/services/api.ts
-const API_BASE_URL = 'http://localhost:8000/api'; // Tu backend FastAPI
+const API_BASE_URL = 'https://impostor-game-backend-pl8h.onrender.com/'; // Tu backend FastAPI
 
 class ApiService {
   private baseUrl: string;
