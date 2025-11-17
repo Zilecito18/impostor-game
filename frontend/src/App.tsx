@@ -186,8 +186,8 @@ const App: React.FC = () => {
     );
   }
 
-  // 5. Fase de preguntas
-  if (currentPhase === 'question' && currentRoom) {
+  // 5. Fase de preguntas - SOLO si NO está en modo debate
+  if (currentPhase === 'question' && currentRoom && !currentRoom.debate_mode) {
     return (
       <QuestionPhase
         room={currentRoom}
@@ -212,7 +212,27 @@ const App: React.FC = () => {
     );
   }
 
-  // 6. Asignación de roles
+    if (currentPhase === 'question' && currentRoom && currentRoom.debate_mode) {
+    // Enviar ready automáticamente para saltar esta fase
+    useEffect(() => {
+      sendMessage('player_ready', {
+        playerId: playerId,
+        is_ready: true,
+        phase: 'question'
+      });
+    }, []);
+    
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
+          <p>Saltando fase de preguntas (Modo Debate)...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 6. Asignación de roles - Asegurarnos que siempre se muestre
   if (currentPhase === 'role_assignment' && currentRoom) {
     return (
       <RoleAssignment 
