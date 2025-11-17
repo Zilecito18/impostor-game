@@ -12,15 +12,15 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
   currentPlayer, 
   onVotingComplete 
 }) => {
-  // Tiempo basado en el modo debate
-  const initialTime = room.debateMode ? room.debateTime * 60 : 45;
+  // ✅ CORREGIDO: Usar snake_case
+  const initialTime = room.debate_mode ? room.debate_time * 60 : 45;
   const [timeLeft, setTimeLeft] = useState(initialTime);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [playerVotes, setPlayerVotes] = useState<{[key: string]: number}>({});
 
-  // Jugadores vivos (que pueden ser votados)
-  const alivePlayers = room.players.filter(player => player.isAlive);
+  // ✅ CORREGIDO: Usar snake_case
+  const alivePlayers = room.players.filter(player => player.is_alive);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -38,7 +38,6 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
   }, []);
 
   const handleTimeUp = () => {
-    // Si no votó, vota nulo automáticamente
     if (!hasVoted) {
       handleVote(null);
     }
@@ -50,10 +49,8 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
     setSelectedPlayer(playerId);
     setHasVoted(true);
 
-    // Simular votos de otros jugadores (luego vendrá del backend)
     simulateOtherVotes(playerId);
 
-    // Esperar un poco antes de pasar a resultados
     setTimeout(() => {
       onVotingComplete(playerId);
     }, 3000);
@@ -62,15 +59,13 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
   const simulateOtherVotes = (userVote: string | null) => {
     const votes: {[key: string]: number} = {};
     
-    // El voto del usuario actual
     if (userVote) {
       votes[userVote] = 1;
     }
 
-    // Simular votos aleatorios de otros jugadores
     alivePlayers.forEach(player => {
       if (player.id !== currentPlayer.id) {
-        const randomVote = Math.random() < 0.7; // 70% de chance de votar
+        const randomVote = Math.random() < 0.7;
         if (randomVote) {
           const randomPlayer = alivePlayers.filter(p => p.id !== player.id)[
             Math.floor(Math.random() * (alivePlayers.length - 1))
@@ -89,9 +84,9 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
     return playerVotes[playerId] || 0;
   };
 
-  // Función para mostrar el tiempo formateado
   const formatTime = (seconds: number) => {
-    if (room.debateMode) {
+    // ✅ CORREGIDO: Usar snake_case
+    if (room.debate_mode) {
       const minutes = Math.floor(seconds / 60);
       const secs = seconds % 60;
       return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
@@ -99,7 +94,6 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
     return `${seconds}s`;
   };
 
-  // Función corregida - AHORA SÍ usa playerName
   const getSuspicionReason = (playerName: string): string => {
     const reasons = [
       `${playerName} dio respuestas muy genéricas sobre equipos`,
@@ -120,11 +114,13 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4">
-            {room.debateMode ? 'Fase de Discución' : 'Fase de Votación'}
+            {/* ✅ CORREGIDO: Usar snake_case */}
+            {room.debate_mode ? 'Fase de Discución' : 'Fase de Votación'}
           </h1>
           <p className="text-gray-300 text-lg">
-            {room.debateMode 
-              ? `Discute y vota para eliminar al impostor (${room.debateTime} min)` 
+            {/* ✅ CORREGIDO: Usar snake_case */}
+            {room.debate_mode 
+              ? `Discute y vota para eliminar al impostor (${room.debate_time} min)` 
               : 'Vota para eliminar al jugador más sospechoso'
             }
           </p>
@@ -134,26 +130,31 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
         <div className="bg-gray-800 rounded-lg p-6 mb-8">
           <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-2xl font-bold">Ronda {room.currentRound} de {room.totalRounds}</h2>
+              {/* ✅ CORREGIDO: Usar snake_case */}
+              <h2 className="text-2xl font-bold">Ronda {room.current_round} de {room.total_rounds}</h2>
               <p className="text-gray-400">
                 {hasVoted ? 'Ya votaste - Esperando resultados...' : '¿Quién es el impostor?'}
               </p>
               <div className="flex items-center mt-2">
                 <span className={`text-sm px-2 py-1 rounded ${
-                  room.debateMode ? 'bg-green-600' : 'bg-blue-600'
+                  // ✅ CORREGIDO: Usar snake_case
+                  room.debate_mode ? 'bg-green-600' : 'bg-blue-600'
                 }`}>
-                  {room.debateMode ? `Debate: ${room.debateTime} min` : 'Votación Rápida'}
+                  {/* ✅ CORREGIDO: Usar snake_case */}
+                  {room.debate_mode ? `Debate: ${room.debate_time} min` : 'Votación Rápida'}
                 </span>
               </div>
             </div>
             <div className="text-right">
               <div className={`text-3xl font-bold ${
-                timeLeft <= (room.debateMode ? 60 : 10) ? 'text-red-400 animate-pulse' : 'text-yellow-400'
+                // ✅ CORREGIDO: Usar snake_case
+                timeLeft <= (room.debate_mode ? 60 : 10) ? 'text-red-400 animate-pulse' : 'text-yellow-400'
               }`}>
                 {formatTime(timeLeft)}
               </div>
               <div className="text-gray-400">
-                {room.debateMode ? 'Tiempo de discución' : 'Tiempo para votar'}
+                {/* ✅ CORREGIDO: Usar snake_case */}
+                {room.debate_mode ? 'Tiempo de discución' : 'Tiempo para votar'}
               </div>
             </div>
           </div>
@@ -225,10 +226,12 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
           {/* Área de discusión y pistas */}
           <div className="bg-gray-800 rounded-lg p-6">
             <h3 className="text-xl font-bold mb-4">
-              {room.debateMode ? 'Discución en Curso' : 'Información de Votación'}
+              {/* ✅ CORREGIDO: Usar snake_case */}
+              {room.debate_mode ? 'Discución en Curso' : 'Información de Votación'}
             </h3>
             
-            {room.debateMode ? (
+            {/* ✅ CORREGIDO: Usar snake_case */}
+            {room.debate_mode ? (
               /* MODO DEBATE ACTIVADO - Chat integrado */
               <div className="space-y-4 max-h-96 overflow-y-auto">
 
@@ -278,12 +281,13 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
               </div>
             )}
 
-            {/* Información para el impostor */}
-            {currentPlayer.isImpostor && (
+            {/* ✅ CORREGIDO: Usar snake_case */}
+            {currentPlayer.is_impostor && (
               <div className="mt-4 bg-red-900 border border-red-600 p-4 rounded-lg">
                 <div className="font-bold text-red-300 mb-2">Eres el Impostor</div>
                 <p className="text-red-200 text-sm">
-                  {room.debateMode 
+                  {/* ✅ CORREGIDO: Usar snake_case */}
+                  {room.debate_mode 
                     ? 'Participa en el debate sin levantar sospechas' 
                     : 'Escucha atentamente la discusión en la llamada'
                   }
@@ -314,12 +318,13 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
 
         {/* Consejos de votación */}
         <div className="mt-6 p-4 bg-purple-900 rounded-lg">
-          <h4 className="font-bold text-purple-300 mb-2">💡 Consejos para {room.debateMode ? 'debate' : 'votación'}:</h4>
+          <h4 className="font-bold text-purple-300 mb-2">💡 Consejos para {/* ✅ CORREGIDO: Usar snake_case */room.debate_mode ? 'debate' : 'votación'}:</h4>
           <ul className="text-sm text-purple-200 space-y-1 grid grid-cols-1 md:grid-cols-2">
             <li>• Busca respuestas vagas o inconsistentes</li>
             <li>• Observa quién duda mucho al responder</li>
-            {room.debateMode && <li>• Participa activamente en el debate</li>}
-            {!room.debateMode && <li>• Coordina con tu equipo en la llamada</li>}
+            {/* ✅ CORREGIDO: Usar snake_case */}
+            {room.debate_mode && <li>• Participa activamente en el debate</li>}
+            {!room.debate_mode && <li>• Coordina con tu equipo en la llamada</li>}
             <li>• No votes al azar - analiza las respuestas</li>
           </ul>
         </div>

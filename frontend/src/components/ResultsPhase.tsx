@@ -21,8 +21,9 @@ const ResultsPhase: React.FC<ResultsPhaseProps> = ({
   const [wasImpostor, setWasImpostor] = useState(false);
   const [showReveal, setShowReveal] = useState(false);
 
-  const alivePlayers = room.players.filter(player => player.isAlive);
-  const eliminatedPlayers = room.players.filter(player => !player.isAlive);
+  // ✅ CORREGIDO: Usar snake_case
+  const alivePlayers = room.players.filter(player => player.is_alive);
+  const eliminatedPlayers = room.players.filter(player => !player.is_alive);
 
   useEffect(() => {
     // Encontrar al jugador eliminado en esta ronda
@@ -30,7 +31,8 @@ const ResultsPhase: React.FC<ResultsPhaseProps> = ({
       const player = room.players.find(p => p.id === votedPlayerId);
       if (player) {
         setEliminatedPlayer(player);
-        setWasImpostor(player.isImpostor || false);
+        // ✅ CORREGIDO: Usar snake_case
+        setWasImpostor(player.is_impostor || false);
       }
     }
 
@@ -58,17 +60,18 @@ const ResultsPhase: React.FC<ResultsPhaseProps> = ({
   }, [votedPlayerId, room.players]);
 
   const handleNextAction = () => {
-    // Verificar condiciones de fin de juego
-    const remainingPlayers = room.players.filter(p => p.isAlive);
-    const impostorsAlive = remainingPlayers.filter(p => p.isImpostor).length;
-    const playersAlive = remainingPlayers.filter(p => !p.isImpostor).length;
+    // ✅ CORREGIDO: Usar snake_case
+    const remainingPlayers = room.players.filter(p => p.is_alive);
+    // ✅ CORREGIDO: Usar snake_case
+    const impostorsAlive = remainingPlayers.filter(p => p.is_impostor).length;
+    const playersAlive = remainingPlayers.filter(p => !p.is_impostor).length;
 
     // Condiciones de victoria
     if (impostorsAlive === 0) {
       onGameOver('players'); // Jugadores ganan
     } else if (impostorsAlive >= playersAlive) {
       onGameOver('impostor'); // Impostor gana
-    } else if (room.currentRound && room.currentRound >= room.rounds) {
+    } else if (room.current_round && room.current_round >= room.total_rounds) {
       onGameOver('impostor'); // Impostor gana por tiempo
     } else {
       onNextRound(); // Continuar a siguiente ronda
@@ -109,7 +112,8 @@ const ResultsPhase: React.FC<ResultsPhaseProps> = ({
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4">Resultados de la Ronda</h1>
           <p className="text-gray-300">
-            Ronda {room.currentRound} de {room.totalRounds}
+            {/* ✅ CORREGIDO: Usar snake_case */}
+            Ronda {room.current_round} de {room.total_rounds}
           </p>
         </div>
 
@@ -184,7 +188,8 @@ const ResultsPhase: React.FC<ResultsPhaseProps> = ({
                         <span className="ml-2 text-green-300 text-sm">(Tú)</span>
                       )}
                     </div>
-                    {player.isImpostor && currentPlayer.isImpostor && (
+                    {/* ✅ CORREGIDO: Usar snake_case */}
+                    {player.is_impostor && currentPlayer.is_impostor && (
                       <span className="bg-red-500 text-xs px-2 py-1 rounded">Impostor</span>
                     )}
                   </div>
@@ -208,7 +213,8 @@ const ResultsPhase: React.FC<ResultsPhaseProps> = ({
                   >
                     <div className="flex justify-between items-center">
                       <div className="font-medium">{player.name}</div>
-                      {player.isImpostor ? (
+                      {/* ✅ CORREGIDO: Usar snake_case */}
+                      {player.is_impostor ? (
                         <span className="bg-red-500 text-xs px-2 py-1 rounded">Impostor</span>
                       ) : (
                         <span className="bg-blue-500 text-xs px-2 py-1 rounded">Inocente</span>
@@ -241,14 +247,16 @@ const ResultsPhase: React.FC<ResultsPhaseProps> = ({
               <div className="text-gray-400 text-sm">Eliminados</div>
             </div>
             <div className="bg-gray-700 p-4 rounded">
+              {/* ✅ CORREGIDO: Usar snake_case */}
               <div className="text-2xl font-bold text-yellow-400">
-                {room.players.filter(p => p.isImpostor && p.isAlive).length}
+                {room.players.filter(p => p.is_impostor && p.is_alive).length}
               </div>
               <div className="text-gray-400 text-sm">Impostores Vivos</div>
             </div>
             <div className="bg-gray-700 p-4 rounded">
+              {/* ✅ CORREGIDO: Usar snake_case */}
               <div className="text-2xl font-bold text-blue-400">
-                {room.currentRound}/{room.totalRounds}
+                {room.current_round}/{room.total_rounds}
               </div>
               <div className="text-gray-400 text-sm">Ronda Actual</div>
             </div>
@@ -270,7 +278,8 @@ const ResultsPhase: React.FC<ResultsPhaseProps> = ({
           </div>
 
           {/* Información para el impostor */}
-          {currentPlayer.isImpostor && currentPlayer.isAlive && (
+          {/* ✅ CORREGIDO: Usar snake_case */}
+          {currentPlayer.is_impostor && currentPlayer.is_alive && (
             <div className="bg-red-900 border border-red-600 rounded-lg p-4 mb-4">
               <h4 className="font-bold text-red-300 mb-2">Eres el Impostor</h4>
               <p className="text-red-200 text-sm">
@@ -283,7 +292,8 @@ const ResultsPhase: React.FC<ResultsPhaseProps> = ({
           )}
 
           {/* Información para jugadores */}
-          {!currentPlayer.isImpostor && currentPlayer.isAlive && (
+          {/* ✅ CORREGIDO: Usar snake_case */}
+          {!currentPlayer.is_impostor && currentPlayer.is_alive && (
             <div className="bg-green-900 border border-green-600 rounded-lg p-4">
               <h4 className="font-bold text-green-300 mb-2">Eres Jugador</h4>
               <p className="text-green-200 text-sm">

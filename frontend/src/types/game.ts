@@ -1,25 +1,30 @@
 export interface Player {
     id: string;
     name: string;
-    isHost: boolean;
-    isImpostor?: boolean;
-    assignedPlayer?: FootballPlayer; // Jugador de fútbol asignado
-    isAlive: boolean;
-    votes?: number;
+    is_host: boolean;
+    is_alive: boolean;
+    is_impostor: boolean;
+    is_ready: boolean;
+    assigned_player?: FootballPlayer;
 }
-// Actualizar Room interface para incluir rondas
+
+// ✅ ACTUALIZAR Room interface para incluir TODAS las propiedades del juego
 export interface Room {
-    id: string;
     code: string;
-    hostId: string;
-    maxPlayers: number;
-    rounds: number;
     players: Player[];
-    status: 'waiting' | 'playing' | 'finished'; // ← AGREGAR ESTA LÍNEA
-    debateMode: boolean;
-    debateTime: number;
-    currentRound?: number;
-    totalRounds?: number;
+    status: string;
+    max_players: number;
+    current_round: number;
+    total_rounds: number;
+    debate_mode: boolean;
+    debate_time: number;
+    game_started: boolean;
+    current_phase?: string;
+    
+    // ✅ AGREGAR PROPIEDADES FALTANTES
+    current_votes?: { [playerId: string]: string };
+    voting_results?: any[]; // O define un tipo más específico
+    game_winner?: 'impostor' | 'players';
 }
 
 export interface FootballPlayer {
@@ -28,9 +33,9 @@ export interface FootballPlayer {
     team: string;
     position: string;
     nationality: string;
-    thumb?: string; // ← Agregar esta propiedad opcional
-    stadium?: string; // ← Opcional también
-    description?: string; // ← Opcional también
+    thumb?: string;
+    stadium?: string;
+    description?: string;
 }
 
 export interface Question {
@@ -39,7 +44,6 @@ export interface Question {
     category: string;
 }
 
-
 // Nuevos tipos para el juego
 export interface GameState {
     currentPhase: 'role_assignment' | 'question' | 'discussion' | 'voting' | 'results';
@@ -47,5 +51,3 @@ export interface GameState {
     timer: number;
     impostorPlayerId?: string;
 }
-
-

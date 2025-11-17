@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import type { Room, Player, Question } from '../types/game';
+import type { Room, Player, Question, FootballPlayer } from '../types/game';
 
 interface QuestionPhaseProps {
   room: Room;
   currentPlayer: Player;
+  assignedPlayer?: FootballPlayer; // ✅ Cambiar a FootballPlayer
+  onSubmitAnswer: (answer: string, questionId: string) => void;
   onPhaseComplete: () => void;
 }
 
 const QuestionPhase: React.FC<QuestionPhaseProps> = ({ 
   room, 
   currentPlayer, 
+  assignedPlayer,
+  onSubmitAnswer,
   onPhaseComplete 
 }) => {
   const [timeLeft, setTimeLeft] = useState(30);
@@ -59,6 +63,11 @@ const QuestionPhase: React.FC<QuestionPhaseProps> = ({
   }, [currentQuestionIndex]);
 
   const handleTimeUp = () => {
+    // ✅ Enviar respuesta vacía si se acaba el tiempo
+    if (playerAnswer.trim()) {
+      onSubmitAnswer(playerAnswer, questions[currentQuestionIndex].id);
+    }
+    
     if (currentQuestionIndex < questions.length - 1) {
       // Pasar a la siguiente pregunta
       setCurrentQuestionIndex(prev => prev + 1);
@@ -71,6 +80,11 @@ const QuestionPhase: React.FC<QuestionPhaseProps> = ({
   };
 
   const handleSubmitAnswer = () => {
+    // ✅ ENVIAR LA RESPUESTA ANTES DE CONTINUAR
+    if (playerAnswer.trim()) {
+      onSubmitAnswer(playerAnswer, questions[currentQuestionIndex].id);
+    }
+    
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
       setTimeLeft(30);
@@ -83,6 +97,8 @@ const QuestionPhase: React.FC<QuestionPhaseProps> = ({
   const currentQuestion = questions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
+  // ✅ CORREGIR: Usar is_impostor en lugar de isImpostor
+  // ✅ CORREGIR: Usar is_alive en lugar de isAlive
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-purple-900 text-white p-8">
       <div className="max-w-4xl mx-auto">
@@ -99,9 +115,11 @@ const QuestionPhase: React.FC<QuestionPhaseProps> = ({
         <div className="bg-gray-800 rounded-lg p-6 mb-8">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h2 className="text-2xl font-bold">Ronda {room.currentRound} de {room.totalRounds}</h2>
+              <h2 className="text-2xl font-bold">Ronda {room.current_round} de {room.total_rounds}</h2>
               <p className="text-gray-400">
-                {currentPlayer.isImpostor ? '🎭 Eres el impostor - Ten cuidado' : '✅ Eres jugador - Responde con veracidad'}
+                {currentPlayer.is_impostor // ✅ CORREGIDO: is_impostor
+                  ? '🎭 Eres el impostor - Ten cuidado' 
+                  : `✅ Eres jugador - Responde sobre ${assignedPlayer?.name || 'tu jugador asignado'}`}
               </p>
             </div>
             <div className="text-right">
@@ -131,9 +149,9 @@ const QuestionPhase: React.FC<QuestionPhaseProps> = ({
             </span>
             <h3 className="text-2xl font-bold mb-4">{currentQuestion.text}</h3>
             <p className="text-gray-400">
-              {currentPlayer.isImpostor 
+              {currentPlayer.is_impostor // ✅ CORREGIDO: is_impostor
                 ? '💡 Recuerda: Solo tienes una pista. Responde con cuidado.'
-                : '✅ Responde según la información de tu jugador asignado.'
+                : `✅ Responde según la información de ${assignedPlayer?.name || 'tu jugador asignado'}`
               }
             </p>
           </div>
@@ -144,9 +162,9 @@ const QuestionPhase: React.FC<QuestionPhaseProps> = ({
               value={playerAnswer}
               onChange={(e) => setPlayerAnswer(e.target.value)}
               placeholder={
-                currentPlayer.isImpostor 
+                currentPlayer.is_impostor // ✅ CORREGIDO: is_impostor
                   ? "Como impostor, inventa una respuesta convincente..."
-                  : "Escribe tu respuesta aquí..."
+                  : `Escribe información sobre ${assignedPlayer?.name || 'tu jugador asignado'}...`
               }
               className="w-full h-32 p-4 rounded-lg bg-gray-700 border border-gray-600 focus:border-green-500 focus:outline-none resize-none"
               maxLength={200}
@@ -162,18 +180,18 @@ const QuestionPhase: React.FC<QuestionPhaseProps> = ({
         <div className="bg-gray-800 rounded-lg p-6">
           <h3 className="text-xl font-bold mb-4">👥 Jugadores Activos</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {room.players.filter(p => p.isAlive).map(player => (
+            {room.players.filter(p => p.is_alive).map(player => ( // ✅ CORREGIDO: is_alive
               <div 
                 key={player.id}
                 className={`p-3 rounded text-center ${
-                  player.name === currentPlayer.name 
+                  player.id === currentPlayer.id 
                     ? 'bg-green-600' 
                     : 'bg-gray-700'
                 }`}
               >
                 <div className="font-medium">{player.name}</div>
                 <div className="text-xs text-gray-300">
-                  {player.name === currentPlayer.name ? '(Tú)' : 'Respondiendo...'}
+                  {player.id === currentPlayer.id ? '(Tú)' : 'Respondiendo...'}
                 </div>
               </div>
             ))}

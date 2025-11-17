@@ -38,27 +38,35 @@ const CreateRoom: React.FC<CreateRoomProps> = ({
       });
 
       if (result.success) {
-        // Convertir la respuesta del backend al tipo Room que espera el frontend
+        // ✅ CORREGIDO: Crear objeto Room con snake_case
         const newRoom: Room = {
-          id: result.room_code, // Usar el código como ID temporal
           code: result.room_code,
-          hostId: 'host-id', // El backend manejará esto
-          maxPlayers: result.room?.max_players || maxPlayers,
-          rounds: result.room?.total_rounds || rounds,
-          players: result.room?.players || [
+          players: result.room?.players?.map((player: any) => ({
+            id: player.id,
+            name: player.name,
+            is_host: player.is_host || false,
+            is_alive: player.is_alive !== false,
+            is_impostor: player.is_impostor || false,
+            is_ready: player.is_ready || false,
+            assigned_player: player.assigned_player
+          })) || [
             {
               id: 'player-1',
               name: playerName,
-              isHost: true,
-              isAlive: true,
-              isImpostor: false
+              is_host: true,
+              is_alive: true,
+              is_impostor: false,
+              is_ready: false,
+              assigned_player: undefined
             }
           ],
           status: result.room?.status || 'waiting',
-          debateMode: result.room?.debate_mode || debateMode,
-          debateTime: debateTime, // Mantener el valor local por ahora
-          currentRound: result.room?.current_round || 1,
-          totalRounds: result.room?.total_rounds || rounds
+          max_players: result.room?.max_players || maxPlayers,
+          current_round: result.room?.current_round || 1,
+          total_rounds: result.room?.total_rounds || rounds,
+          debate_mode: result.room?.debate_mode || debateMode,
+          debate_time: result.room?.debate_time || debateTime,
+          game_started: result.room?.game_started || false
         };
         
         onRoomCreated(newRoom);
@@ -69,27 +77,27 @@ const CreateRoom: React.FC<CreateRoomProps> = ({
       console.error('Error creating room:', error);
       setError(error.message || 'Error de conexión con el servidor');
       
-      // Fallback: crear sala local si el backend falla
+      // ✅ CORREGIDO: Fallback con snake_case
       const fallbackRoom: Room = {
-        id: Math.random().toString(36).substr(2, 9),
         code: Math.random().toString(36).substr(2, 6).toUpperCase(),
-        hostId: 'host-id',
-        maxPlayers,
-        rounds,
         players: [
           {
             id: 'player-1',
             name: playerName,
-            isHost: true,
-            isAlive: true,
-            isImpostor: false
+            is_host: true,
+            is_alive: true,
+            is_impostor: false,
+            is_ready: false,
+            assigned_player: undefined
           }
         ],
         status: 'waiting',
-        debateMode,
-        debateTime,
-        currentRound: 1,
-        totalRounds: rounds
+        max_players: maxPlayers,
+        current_round: 1,
+        total_rounds: rounds,
+        debate_mode: debateMode,
+        debate_time: debateTime,
+        game_started: false
       };
       
       onRoomCreated(fallbackRoom);

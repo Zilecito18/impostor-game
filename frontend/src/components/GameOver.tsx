@@ -16,14 +16,17 @@ const GameOver: React.FC<GameOverProps> = ({
   onReturnToMenu,
   onPlayAgain 
 }) => {
-  // Función helper para manejar isImpostor opcional
+  // ✅ CORREGIDO: Usar snake_case
   const isPlayerImpostor = (player: Player): boolean => {
-    return player.isImpostor ?? false;
+    return player.is_impostor ?? false;
   };
 
+  // ✅ CORREGIDO: Usar snake_case
   const impostors = room.players.filter(player => isPlayerImpostor(player));
-  const alivePlayers = room.players.filter(player => player.isAlive);
-  const eliminatedPlayers = room.players.filter(player => !player.isAlive);
+  // ✅ CORREGIDO: Usar snake_case
+  const alivePlayers = room.players.filter(player => player.is_alive);
+  // ✅ CORREGIDO: Usar snake_case
+  const eliminatedPlayers = room.players.filter(player => !player.is_alive);
 
   const playerWon = 
     (winner === 'players' && !isPlayerImpostor(currentPlayer)) ||
@@ -64,9 +67,11 @@ const GameOver: React.FC<GameOverProps> = ({
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-bold text-lg">{impostor.name}</div>
                   <span className={`px-2 py-1 rounded text-sm ${
-                    impostor.isAlive ? 'bg-green-500' : 'bg-red-500'
+                    // ✅ CORREGIDO: Usar snake_case
+                    impostor.is_alive ? 'bg-green-500' : 'bg-red-500'
                   }`}>
-                    {impostor.isAlive ? 'SOBREVIVIÓ' : 'ELIMINADO'}
+                    {/* ✅ CORREGIDO: Usar snake_case */}
+                    {impostor.is_alive ? 'SOBREVIVIÓ' : 'ELIMINADO'}
                   </span>
                 </div>
                 {impostor.id === currentPlayer.id && (
@@ -101,7 +106,8 @@ const GameOver: React.FC<GameOverProps> = ({
               <div className="bg-gray-700 p-3 rounded">
                 <div className="flex justify-between text-sm">
                   <span>Duración del juego:</span>
-                  <span className="font-bold">{room.totalRounds} rondas</span>
+                  {/* ✅ CORREGIDO: Usar snake_case */}
+                  <span className="font-bold">{room.total_rounds} rondas</span>
                 </div>
               </div>
               
@@ -166,9 +172,11 @@ const GameOver: React.FC<GameOverProps> = ({
                       {isPlayerImpostor(player) ? 'IMPOSTOR' : 'JUGADOR'}
                     </span>
                     <span className={`text-xs mt-1 px-2 py-1 rounded ${
-                      player.isAlive ? 'bg-green-500' : 'bg-red-500'
+                      // ✅ CORREGIDO: Usar snake_case
+                      player.is_alive ? 'bg-green-500' : 'bg-red-500'
                     }`}>
-                      {player.isAlive ? 'VIVO' : 'ELIMINADO'}
+                      {/* ✅ CORREGIDO: Usar snake_case */}
+                      {player.is_alive ? 'VIVO' : 'ELIMINADO'}
                     </span>
                   </div>
                 </div>

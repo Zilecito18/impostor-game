@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import type { Room } from '../types/game';
+import type { Room, FootballPlayer } from '../types/game';
 import { roomService } from '../services/roomService';
 
 interface JoinRoomProps {
-  onRoomJoined: (room: Room) => void;
+  onRoomJoined: (room: Room, playerId: string) => void; // ✅ Agregar playerId
   playerName: string;
 }
 
@@ -32,29 +32,35 @@ const JoinRoom: React.FC<JoinRoomProps> = ({ onRoomJoined, playerName }) => {
         room_code: roomCode.toUpperCase()
       });
 
-      if (result.success) {
-        // Convertir la respuesta del backend al tipo Room que espera el frontend
+      if (result.success && result.room) {
+        // ✅ CORREGIDO: Mapeo correcto según la interfaz Room
         const joinedRoom: Room = {
-          id: result.room?.code || roomCode.toUpperCase(),
-          code: result.room?.code || roomCode.toUpperCase(),
-          hostId: result.room?.players?.find((p: any) => p.is_host)?.id || 'host-id',
-          maxPlayers: result.room?.max_players || 8,
-          rounds: result.room?.total_rounds || 5,
-          players: result.room?.players?.map((player: any) => ({
+          code: result.room.code,
+          players: result.room.players.map((player: any) => ({
             id: player.id,
             name: player.name,
-            isHost: player.is_host,
-            isAlive: player.is_alive,
-            isImpostor: player.is_impostor || false
-          })) || [],
-          status: result.room?.status || 'waiting',
-          debateMode: result.room?.debate_mode || false,
-          debateTime: 5, // Valor por defecto
-          currentRound: result.room?.current_round || 1,
-          totalRounds: result.room?.total_rounds || 5
+            is_host: player.is_host,
+            is_alive: player.is_alive,
+            is_impostor: player.is_impostor,
+            is_ready: player.is_ready,
+            assigned_player: player.assigned_player as FootballPlayer | undefined
+          })),
+          status: result.room.status,
+          max_players: result.room.max_players,
+          current_round: result.room.current_round || 1,
+          total_rounds: result.room.total_rounds || 5,
+          debate_mode: result.room.debate_mode || false,
+          debate_time: result.room.debate_time || 5,
+          game_started: result.room.game_started || false,
+          current_phase: result.room.current_phase || 'waiting'
         };
 
-        onRoomJoined(joinedRoom);
+        // ✅ Obtener el ID del jugador actual (el que se acaba de unir)
+        const currentPlayerId = result.player_id || 
+          result.room.players.find((p: any) => p.name === playerName)?.id || 
+          `player-${Date.now()}`;
+
+        onRoomJoined(joinedRoom, currentPlayerId);
       } else {
         setError(result.message || 'Error al unirse a la sala');
       }
@@ -62,37 +68,40 @@ const JoinRoom: React.FC<JoinRoomProps> = ({ onRoomJoined, playerName }) => {
       console.error('Error joining room:', error);
       setError(error.message || 'Error de conexión con el servidor');
       
-      // Fallback: unirse a sala local si el backend falla
+      // ✅ CORREGIDO: Fallback con estructura correcta
       const fallbackRoom: Room = {
-        id: roomCode.toUpperCase(),
         code: roomCode.toUpperCase(),
-        hostId: 'host-id',
-        maxPlayers: 8,
-        rounds: 5,
         players: [
           {
-            id: 'existing-player',
+            id: 'existing-player-1',
             name: 'Jugador Existente',
-            isHost: true,
-            isAlive: true,
-            isImpostor: false
+            is_host: true,
+            is_alive: true,
+            is_impostor: false,
+            is_ready: false,
+            assigned_player: undefined
           },
           {
-            id: 'new-player',
+            id: 'new-player-' + Date.now(),
             name: playerName,
-            isHost: false,
-            isAlive: true,
-            isImpostor: false
+            is_host: false,
+            is_alive: true,
+            is_impostor: false,
+            is_ready: false,
+            assigned_player: undefined
           }
         ],
         status: 'waiting',
-        debateMode: false,
-        debateTime: 5,
-        currentRound: 1,
-        totalRounds: 5
+        max_players: 8,
+        current_round: 1,
+        total_rounds: 5,
+        debate_mode: false,
+        debate_time: 5,
+        game_started: false,
+        current_phase: 'waiting'
       };
 
-      onRoomJoined(fallbackRoom);
+      onRoomJoined(fallbackRoom, 'new-player-' + Date.now());
     } finally {
       setIsJoining(false);
     }

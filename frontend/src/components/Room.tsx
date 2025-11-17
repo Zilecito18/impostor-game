@@ -6,35 +6,41 @@ import DebugTools from './DebugTools';
 
 interface RoomProps {
   room: RoomType;
-  playerName: string;
+  currentPlayer: PlayerType;  // ✅ Cambiado de playerName a currentPlayer
+  connectionStatus: string;
   onGameStart: () => void;
+  onLeaveRoom: () => void;
 }
 
-// Función para convertir room del backend al tipo frontend - MOVIDA AFUERA DEL COMPONENTE
+// Función para convertir room del backend al tipo frontend
 const convertBackendRoomToFrontend = (backendRoom: any): RoomType => {
   return {
-    id: backendRoom.code || backendRoom.id,
     code: backendRoom.code,
-    hostId: backendRoom.players?.find((p: any) => p.is_host || p.isHost)?.id || 'host-id',
-    maxPlayers: backendRoom.max_players || backendRoom.maxPlayers || 8,
-    rounds: backendRoom.total_rounds || backendRoom.rounds || 5,
     players: (backendRoom.players || []).map((player: any) => ({
       id: player.id,
       name: player.name,
-      isHost: player.is_host || player.isHost || false,
-      isAlive: player.is_alive !== undefined ? player.is_alive : player.isAlive !== undefined ? player.isAlive : true,
-      isImpostor: player.is_impostor || player.isImpostor || false,
-      assignedPlayer: player.assigned_player || player.assignedPlayer
+      is_host: player.is_host || false,  // ✅ snake_case
+      is_alive: player.is_alive !== false, // default true
+      is_impostor: player.is_impostor || false,  // ✅ snake_case
+      is_ready: player.is_ready || false,  // ✅ snake_case
+      assigned_player: player.assigned_player
     })),
     status: backendRoom.status || 'waiting',
-    debateMode: backendRoom.debate_mode || backendRoom.debateMode || false,
-    debateTime: backendRoom.debate_time || backendRoom.debateTime || 5,
-    currentRound: backendRoom.current_round || backendRoom.currentRound || 1,
-    totalRounds: backendRoom.total_rounds || backendRoom.totalRounds || 5
+    max_players: backendRoom.max_players || 8,  // ✅ snake_case
+    current_round: backendRoom.current_round || 1,  // ✅ snake_case
+    total_rounds: backendRoom.total_rounds || 5,  // ✅ snake_case
+    debate_mode: backendRoom.debate_mode || false,  // ✅ snake_case
+    debate_time: backendRoom.debate_time || 5,  // ✅ snake_case
+    game_started: backendRoom.game_started || false  // ✅ snake_case
   };
 };
 
-const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
+const Room: React.FC<RoomProps> = ({ 
+  room, 
+  currentPlayer, 
+  onGameStart, 
+  onLeaveRoom 
+}) => {
   const [currentRoom, setCurrentRoom] = useState<RoomType>(room);
   const [isStarting, setIsStarting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +48,8 @@ const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
   // Conectar WebSocket a la sala
   const { isConnected, gameState, sendMessage } = useWebSocket(room.code);
   
-  const currentPlayer = currentRoom.players.find(p => p.name === playerName);
-  const isHost = currentPlayer?.isHost;
+  // ✅ Usar currentPlayer que viene del padre (ya convertido)
+  const isHost = currentPlayer?.is_host;
 
   // Sincronizar estado cuando lleguen actualizaciones via WebSocket
   useEffect(() => {
@@ -58,31 +64,8 @@ const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
   useEffect(() => {
     if (isConnected) {
       console.log('✅ Conectado a la sala via WebSocket');
-      // Solicitar estado actual de la sala
-      sendMessage('get_room_state', {});
     }
-  }, [isConnected, sendMessage]);
-
-  // Actualizar periódicamente el estado de la sala (OPCIONAL - comentado por ahora)
-  /*
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (room.code && isConnected) {
-        try {
-          const roomData = await roomService.getRoom(room.code);
-          if (roomData) {
-            const convertedRoom = convertBackendRoomToFrontend(roomData);
-            setCurrentRoom(convertedRoom);
-          }
-        } catch (error) {
-          console.log('No se pudo actualizar el estado de la sala');
-        }
-      }
-    }, 5000); // Actualizar cada 5 segundos
-
-    return () => clearInterval(interval);
-  }, [room.code, isConnected]);
-  */
+  }, [isConnected]);
 
   const handleStartGame = async () => {
     if (!isHost) return;
@@ -92,35 +75,31 @@ const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
 
     try {
       console.log(`🎯 Iniciando juego en sala: ${room.code}`);
-      const result = await roomService.startGame(room.code);
       
-      if (result.success) {
-        console.log('🎮 Juego iniciado:', result);
-        
-        // Convertir y actualizar estado local
-        const updatedRoom = convertBackendRoomToFrontend({
-          ...result.room,
-          status: 'playing'
-        });
-        
-        setCurrentRoom(updatedRoom);
-        
-        // Notificar al componente padre
-        onGameStart();
+      // ✅ Usar WebSocket en lugar de HTTP
+      const sent = sendMessage('start_game', { playerId: currentPlayer.id });
+      
+      if (sent) {
+        console.log('🎮 Mensaje de inicio enviado via WebSocket');
       } else {
-        setError(result.message || 'Error al iniciar el juego');
+        // Fallback a HTTP si WebSocket falla
+        const result = await roomService.startGame(room.code);
+        
+        if (result.success) {
+          console.log('🎮 Juego iniciado via HTTP:', result);
+          const updatedRoom = convertBackendRoomToFrontend({
+            ...result.room,
+            status: 'playing'
+          });
+          setCurrentRoom(updatedRoom);
+          onGameStart();
+        } else {
+          setError(result.message || 'Error al iniciar el juego');
+        }
       }
     } catch (error: any) {
       console.error('Error starting game:', error);
       setError(error.message || 'Error de conexión con el servidor');
-      
-      // Fallback: iniciar juego localmente
-      const updatedRoom: RoomType = {
-        ...currentRoom,
-        status: 'playing'
-      };
-      setCurrentRoom(updatedRoom);
-      onGameStart();
     } finally {
       setIsStarting(false);
     }
@@ -141,13 +120,14 @@ const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
         !currentRoom.players.some(player => player.name === name)
       );
 
-      if (availableNames.length > 0 && currentRoom.players.length < currentRoom.maxPlayers) {
+      if (availableNames.length > 0 && currentRoom.players.length < currentRoom.max_players) {
         const newBot: PlayerType = {
           id: `bot-${Date.now()}`,
           name: availableNames[0],
-          isHost: false,
-          isAlive: true,
-          isImpostor: false
+          is_host: false,
+          is_alive: true,
+          is_impostor: false,
+          is_ready: false
         };
 
         setCurrentRoom(prev => ({
@@ -187,12 +167,20 @@ const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
               }`}></div>
               {isConnected ? '✅ Conectado al servidor' : '❌ Desconectado del servidor'}
             </div>
-            <button 
-              onClick={handleRefreshRoom}
-              className="mt-2 text-sm text-gray-300 hover:text-white underline"
-            >
-              Actualizar estado
-            </button>
+            <div className="flex justify-center space-x-4 mt-2">
+              <button 
+                onClick={handleRefreshRoom}
+                className="text-sm text-gray-300 hover:text-white underline"
+              >
+                Actualizar estado
+              </button>
+              <button 
+                onClick={onLeaveRoom}
+                className="text-sm text-red-300 hover:text-red-100 underline"
+              >
+                🚪 Salir de la sala
+              </button>
+            </div>
           </div>
 
           {/* Mensaje de error */}
@@ -236,10 +224,10 @@ const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
               </div>
               <div className="text-right">
                 <div className="text-sm bg-gray-700 px-4 py-2 rounded-full font-semibold text-white">
-                  {currentRoom.players.length}/{currentRoom.maxPlayers} jugadores
+                  {currentRoom.players.length}/{currentRoom.max_players} jugadores
                 </div>
                 <div className="text-xs text-gray-300 mt-1">
-                  {currentRoom.rounds} rondas • {currentRoom.debateMode ? '🗣️ Modo Debate' : '❓ Modo Preguntas'}
+                  {currentRoom.total_rounds} rondas • {currentRoom.debate_mode ? '🗣️ Modo Debate' : '❓ Modo Preguntas'}
                 </div>
               </div>
             </div>
@@ -263,27 +251,30 @@ const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
                   <div 
                     key={player.id}
                     className={`p-4 rounded-lg border-2 transition-all ${
-                      player.isHost 
+                      player.is_host 
                         ? 'border-blue-500 bg-blue-500/20' 
                         : 'border-gray-600 bg-gray-700/70'
-                    } ${player.name === playerName ? 'ring-2 ring-green-400' : ''}`}
+                    } ${player.id === currentPlayer.id ? 'ring-2 ring-green-400' : ''}`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="font-medium text-lg text-white">
                         {player.name}
-                        {player.name !== playerName && (player.name.includes('Messi') || player.name.includes('Ronaldo')) && (
+                        {player.id !== currentPlayer.id && (player.name.includes('Messi') || player.name.includes('Ronaldo')) && (
                           <span className="text-xs text-gray-400 ml-2">🤖</span>
                         )}
                       </div>
-                      {player.isHost && (
+                      {player.is_host && (
                         <span className="bg-blue-600 text-xs px-2 py-1 rounded-full text-white">Anfitrión</span>
                       )}
                     </div>
-                    {player.name === playerName && (
+                    {player.id === currentPlayer.id && (
                       <div className="text-green-400 text-sm mt-1">← Tú</div>
                     )}
-                    {player.isImpostor && currentRoom.status === 'playing' && (
+                    {player.is_impostor && currentRoom.status === 'playing' && (
                       <div className="text-red-400 text-sm mt-1">🎭 Impostor</div>
+                    )}
+                    {player.is_ready && (
+                      <div className="text-green-400 text-sm mt-1">✅ Listo</div>
                     )}
                   </div>
                 ))}
@@ -342,13 +333,13 @@ const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
               <div className="text-center">
                 <div className="text-gray-400">Modo</div>
                 <div className="font-bold text-blue-400">
-                  {currentRoom.debateMode ? 'Debate' : 'Preguntas'}
+                  {currentRoom.debate_mode ? 'Debate' : 'Preguntas'}
                 </div>
               </div>
               <div className="text-center">
                 <div className="text-gray-400">Rondas</div>
                 <div className="font-bold text-purple-400">
-                  {currentRoom.rounds}
+                  {currentRoom.total_rounds}
                 </div>
               </div>
               <div className="text-center">
@@ -367,6 +358,9 @@ const Room: React.FC<RoomProps> = ({ room, playerName, onGameStart }) => {
               <li>• Comparte el código <strong>{currentRoom.code}</strong> con otros jugadores</li>
               <li>• Cuando todos estén listos, haz clic en "Iniciar Juego"</li>
               <li>• El anfitrión puede agregar bots para testing</li>
+              {isHost && (
+                <li>• <strong>Eres el anfitrión</strong> - puedes iniciar el juego</li>
+              )}
             </ul>
           </div>
         </div>

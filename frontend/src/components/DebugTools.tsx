@@ -18,7 +18,8 @@ const DebugTools: React.FC<DebugToolsProps> = ({ room, onAddBot, onStartGame }) 
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={onAddBot}
-          disabled={room.players.length >= room.maxPlayers}
+          // ✅ CORREGIDO: Usar snake_case
+          disabled={room.players.length >= room.max_players}
           className="bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 px-3 py-2 rounded text-sm"
         >
           Añadir Bot (+1)

@@ -39,6 +39,19 @@ class Player(BaseModel):
     assigned_player: Optional[Dict] = None
     is_ready: bool = False
 
+class GamePhase(BaseModel):
+    name: str  # "role_assignment", "question", "debate", "voting", "results"
+    duration: int = 60
+    started_at: Optional[datetime] = None
+
+class GameState(BaseModel):
+    current_phase: str = "waiting"
+    phases: Dict[str, GamePhase] = {}
+    round: int = 1
+    questions: List[Dict] = []
+    votes: Dict[str, str] = {}  # voter_id -> voted_id
+    results: Optional[Dict] = None
+
 class Room(BaseModel):
     code: str
     players: List[Player] = []
@@ -49,6 +62,7 @@ class Room(BaseModel):
     debate_mode: bool = False
     debate_time: int = 5
     game_started: bool = False
+    game_state: GameState = GameState()  # ← NUEVO
 
 class RoomCreate(BaseModel):
     player_name: str
@@ -63,6 +77,73 @@ class RoomJoin(BaseModel):
 # ========== ALMACENAMIENTO ==========
 rooms_db: Dict[str, Room] = {}
 active_connections: Dict[str, List[WebSocket]] = {}
+
+# ========== SISTEMA DE FASES ==========
+class PhaseManager:
+    def __init__(self):
+        self.phases = {
+            "role_assignment": GamePhase(name="role_assignment", duration=10),
+            "question": GamePhase(name="question", duration=30),
+            "debate": GamePhase(name="debate", duration=60),
+            "voting": GamePhase(name="voting", duration=30),
+            "results": GamePhase(name="results", duration=15),
+        }
+    
+    async def start_phase(self, room_code: str, phase_name: str):
+        """Iniciar una nueva fase del juego"""
+        room = rooms_db.get(room_code)
+        if not room or phase_name not in self.phases:
+            return False
+        
+        phase = self.phases[phase_name]
+        phase.started_at = datetime.now()
+        room.game_state.current_phase = phase_name
+        
+        print(f"🔄 [PHASE] Cambiando a fase {phase_name} en sala {room_code}")
+        
+        # Mensaje específico para cada fase
+        phase_messages = {
+            "role_assignment": "🎭 Asignando roles...",
+            "question": "❓ Responde la pregunta sobre tu jugador",
+            "debate": "💬 Debate - Encuentren al impostor!",
+            "voting": "🗳️ Voten por quien creen que es el impostor",
+            "results": "📊 Mostrando resultados..."
+        }
+        
+        await broadcast_to_room(room_code, {
+            "type": "phase_changed",
+            "phase": phase_name,
+            "message": phase_messages.get(phase_name, "Nueva fase iniciada"),
+            "duration": phase.duration,
+            "room": room.dict(),
+            "game_state": room.game_state.dict()
+        })
+        
+        # Programar siguiente fase automáticamente
+        if phase_name != "results":
+            asyncio.create_task(self.schedule_next_phase(room_code, phase_name, phase.duration))
+        
+        return True
+    
+    async def schedule_next_phase(self, room_code: str, current_phase: str, duration: int):
+        """Programar la siguiente fase automáticamente"""
+        print(f"⏰ [PHASE] Programando siguiente fase en {duration}s para {room_code}")
+        await asyncio.sleep(duration)
+        
+        next_phases = {
+            "role_assignment": "question",
+            "question": "debate", 
+            "debate": "voting",
+            "voting": "results",
+            "results": "role_assignment"  # Volver al inicio para siguiente ronda
+        }
+        
+        next_phase = next_phases.get(current_phase)
+        if next_phase:
+            print(f"🔄 [PHASE] Transición automática: {current_phase} -> {next_phase}")
+            await self.start_phase(room_code, next_phase)
+
+phase_manager = PhaseManager()
 
 # ========== SERVICIO DE FÚTBOL ACTUALIZADO ==========
 class FootballService:
@@ -265,6 +346,38 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str):
                         })
                         print(f"❌ [WS] {error_msg} en sala {room_code}")
                 
+                elif message_type == "submit_answer":
+                    # Manejar respuestas de preguntas
+                    player_id = message_data.get("player_id")
+                    answer = message_data.get("answer")
+                    question_id = message_data.get("question_id")
+                    
+                    print(f"📝 [GAME] Jugador {player_id} envió respuesta: {answer}")
+                    
+                    await broadcast_to_room(room_code, {
+                        "type": "answer_submitted",
+                        "player_id": player_id,
+                        "answer": answer,
+                        "question_id": question_id
+                    })
+                
+                elif message_type == "submit_vote":
+                    # Manejar votos
+                    voter_id = message_data.get("voter_id")
+                    voted_id = message_data.get("voted_id")
+                    
+                    print(f"🗳️ [GAME] Jugador {voter_id} votó por {voted_id}")
+                    
+                    if room:
+                        room.game_state.votes[voter_id] = voted_id
+                    
+                    await broadcast_to_room(room_code, {
+                        "type": "vote_submitted",
+                        "voter_id": voter_id,
+                        "voted_id": voted_id,
+                        "room": room.dict() if room else None
+                    })
+                
                 else:
                     # Echo solo para el remitente
                     await websocket.send_json({
@@ -424,6 +537,10 @@ async def start_game_internal(room_code: str):
     room.status = "playing"
     room.game_started = True
     
+    # ✅ INICIAR PRIMERA FASE DEL JUEGO
+    print(f"🔄 [GAME] Iniciando primera fase: role_assignment")
+    await phase_manager.start_phase(room_code, "role_assignment")
+    
     # ✅ MENSAJE COMPLETO PARA BROADCAST
     game_started_message = {
         "type": "game_started",
@@ -432,6 +549,7 @@ async def start_game_internal(room_code: str):
         "impostor_id": impostor.id,
         "assigned_players": assigned_players,
         "football_players": available_football_players,
+        "current_phase": "role_assignment",  # ← NUEVO
         "timestamp": datetime.now().isoformat()
     }
     
@@ -548,7 +666,8 @@ async def debug_rooms():
             "player_count": len(room.players),
             "players": [p.name for p in room.players],
             "game_started": room.game_started,
-            "status": room.status
+            "status": room.status,
+            "current_phase": room.game_state.current_phase
         } for code, room in rooms_db.items()},
         "active_connections": {code: len(conns) for code, conns in active_connections.items()}
     }

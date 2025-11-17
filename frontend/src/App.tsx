@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Room, Player } from './types/game';
 import CreateRoom from './components/CreateRoom';
 import RoomComponent from './components/Room';
@@ -9,154 +9,250 @@ import VotingPhase from './components/VotingPhase';
 import ResultsPhase from './components/ResultsPhase';
 import GameOver from './components/GameOver';
 import DebatePhase from './components/DebatePhase';
+import { useWebSocket } from './hooks/useWebSocket';
+
+// ✅ Extender el tipo Room para incluir propiedades del juego
+interface GameRoom extends Room {
+  current_votes?: { [playerId: string]: string };
+  voting_results?: any[];
+  game_winner?: 'impostor' | 'players';
+  // No necesitas redefinir current_round y current_phase porque ya están en Room
+}
 
 const App: React.FC = () => {
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [playerName, setPlayerName] = useState<string>('');
+  const [playerId, setPlayerId] = useState<string>('');
   const [currentView, setCurrentView] = useState<'main' | 'create' | 'join' | 'howToPlay'>('main');
-  const [gamePhase, setGamePhase] = useState<'waiting' | 'role_assignment' | 'question' | 'debate' | 'voting' | 'results' | 'finished'>('waiting');
-  const [currentRound, setCurrentRound] = useState(1);
-  const [votedPlayerId, setVotedPlayerId] = useState<string | null>(null);
-  const [gameWinner, setGameWinner] = useState<'impostor' | 'players' | null>(null);
+  
+  const { 
+    gameState, 
+    isConnected, 
+    connectionStatus, 
+    sendMessage, 
+  } = useWebSocket(currentRoom?.code || null);
 
-  // Datos de ejemplo temporal para testing
-  const mockCurrentPlayer: Player = {
-    id: 'player-1',
-    name: playerName || 'Jugador Test',
-    isHost: true,
-    isImpostor: false,
-    isAlive: true
+  // ✅ Hacer type assertion para gameState
+  const gameRoom = gameState as GameRoom | null;
+
+  useEffect(() => {
+    if (gameState && gameState.code) {
+      console.log('🔄 App: Sincronizando room desde WebSocket:', gameState.code);
+      setCurrentRoom(gameState);
+    }
+  }, [gameState]);
+
+  useEffect(() => {
+    if (currentRoom && playerName && playerId) {
+      console.log('🔗 App: Uniendo a sala via WebSocket');
+      sendMessage('player_join', {
+        playerId: playerId,
+        playerName: playerName
+      });
+    }
+  }, [currentRoom, playerName, playerId, sendMessage]);
+
+  const currentPhase = gameRoom?.current_phase || 'waiting';
+  const currentRound = gameRoom?.current_round || 1;
+
+  const findCurrentPlayer = (): Player => {
+    if (!gameRoom?.players || !playerId) {
+      return {
+        id: playerId,
+        name: playerName,
+        is_host: false,
+        is_alive: true,
+        is_impostor: false,
+        is_ready: false,
+        assigned_player: undefined
+      };
+    }
+
+    const player = gameRoom.players.find((p: Player) => p.id === playerId);
+    
+    return player || {
+      id: playerId,
+      name: playerName,
+      is_host: false,
+      is_alive: true,
+      is_impostor: false,
+      is_ready: false,
+      assigned_player: undefined
+    };
   };
+
+  const currentPlayer = findCurrentPlayer();
+  const isHost = !!currentPlayer.is_host;
 
   // ========== FLUJO DEL JUEGO ==========
 
   // 1. Pantalla final del juego
-  if (gamePhase === 'finished' && gameWinner && currentRoom) {
+  if (currentPhase === 'finished' && currentRoom) {
     return (
       <GameOver
         room={currentRoom}
-        currentPlayer={mockCurrentPlayer}
-        winner={gameWinner}
+        currentPlayer={currentPlayer}
+        winner={gameRoom?.game_winner || 'players'}
         onReturnToMenu={() => {
           setCurrentRoom(null);
-          setGamePhase('waiting');
-          setCurrentRound(1);
-          setGameWinner(null);
+          setPlayerId('');
+          setCurrentView('main');
         }}
         onPlayAgain={() => {
-          setGamePhase('role_assignment');
-          setCurrentRound(1);
-          setGameWinner(null);
+          if (isHost) {
+            sendMessage('start_game', { playerId: playerId });
+          }
         }}
       />
     );
   }
 
   // 2. Resultados de la ronda
-  if (gamePhase === 'results' && currentRoom) {
+  if (currentPhase === 'results' && currentRoom) {
+    // Función para encontrar el jugador más votado
+    const getVotedPlayerId = (): string | null => {
+      if (!gameRoom?.voting_results || gameRoom.voting_results.length === 0) {
+        return null;
+      }
+      
+      try {
+        // Asumiendo que voting_results es un array de objetos con playerId y votes
+        const validResults = gameRoom.voting_results.filter(result => 
+          result && result.playerId && typeof result.votes === 'number'
+        );
+        
+        if (validResults.length === 0) return null;
+        
+        const mostVoted = validResults.reduce((prev, current) => 
+          current.votes > prev.votes ? current : prev
+        );
+        
+        return mostVoted.playerId;
+      } catch (error) {
+        console.error('Error procesando resultados de votación:', error);
+        return null;
+      }
+    };
+
+    const votedPlayerId = getVotedPlayerId();
+
     return (
       <ResultsPhase
-        room={{ ...currentRoom, currentRound, totalRounds: 5 }}
-        currentPlayer={mockCurrentPlayer}
+        room={currentRoom}
+        currentPlayer={currentPlayer}
         votedPlayerId={votedPlayerId}
         onNextRound={() => {
-          const nextRound = currentRound + 1;
-          setCurrentRound(nextRound);
-          
-          if (nextRound > 5) {
-            // Fin del juego - el impostor gana si llega al final
-            setGameWinner('impostor');
-            setGamePhase('finished');
-          } else {
-            // Siguiente ronda - depende del modo de juego
-            if (currentRoom.debateMode) {
-              // MODO CON LLAMADA: Ir directamente a debate
-              setGamePhase('debate');
-            } else {
-              // MODO SIN LLAMADA: Ir a preguntas
-              setGamePhase('question');
-            }
-          }
-          setVotedPlayerId(null);
+          console.log('⏭️ Avanzando a siguiente ronda...');
         }}
-        onGameOver={(winner) => {
-          setGameWinner(winner);
-          setGamePhase('finished');
+        onGameOver={(winner: 'impostor' | 'players') => {
+          console.log(`🎮 Fin del juego desde ResultsPhase: ${winner} ganan`);
+          // El backend manejará la transición a game over
         }}
       />
     );
   }
 
   // 3. Fase de votación
-  if (gamePhase === 'voting' && currentRoom) {
+  if (currentPhase === 'voting' && currentRoom) {
     return (
       <VotingPhase
-        room={{ ...currentRoom, currentRound, totalRounds: 5 }}
-        currentPlayer={mockCurrentPlayer}
-        onVotingComplete={(playerId) => {
-          setVotedPlayerId(playerId);
-          setGamePhase('results');
+        room={currentRoom}
+        currentPlayer={currentPlayer}
+        onVotingComplete={(votedPlayerId: string | null) => {
+          sendMessage('player_vote', {
+            playerId: playerId,
+            votedPlayerId: votedPlayerId,
+            roundId: `round_${currentRound}`
+          });
         }}
       />
     );
   }
 
-  // 4. Fase de Debate (SOLO para modo con llamada)
-  if (gamePhase === 'debate' && currentRoom && currentRoom.debateMode) {
+  // 4. Fase de Debate
+  if (currentPhase === 'debate' && currentRoom) {
     return (
       <DebatePhase
-        room={{ ...currentRoom, currentRound, totalRounds: 5 }}
-        currentPlayer={mockCurrentPlayer}
-        onDebateComplete={() => setGamePhase('voting')}
+        room={currentRoom}
+        currentPlayer={currentPlayer}
+        onDebateComplete={() => {
+          sendMessage('player_ready', {
+            playerId: playerId,
+            is_ready: true,
+            phase: 'debate'
+          });
+        }}
       />
     );
   }
 
-  // 5. Fase de preguntas (SOLO para modo sin llamada)
-  if (gamePhase === 'question' && currentRoom && !currentRoom.debateMode) {
+  // 5. Fase de preguntas
+  if (currentPhase === 'question' && currentRoom) {
     return (
       <QuestionPhase
-        room={{ ...currentRoom, currentRound, totalRounds: 5 }}
-        currentPlayer={mockCurrentPlayer}
-        onPhaseComplete={() => setGamePhase('voting')}
+        room={currentRoom}
+        currentPlayer={currentPlayer}
+        assignedPlayer={currentPlayer.assigned_player}
+        onSubmitAnswer={(answer: string, questionId: string) => {
+          sendMessage('player_answer', {
+            playerId: playerId,
+            answer: answer,
+            questionId: questionId,
+            roundId: `round_${currentRound}`
+          });
+        }}
+        onPhaseComplete={() => {
+          sendMessage('player_ready', {
+            playerId: playerId,
+            is_ready: true,
+            phase: 'question'
+          });
+        }}
       />
     );
   }
 
   // 6. Asignación de roles
-  if (gamePhase === 'role_assignment' && currentRoom) {
+  if (currentPhase === 'role_assignment' && currentRoom) {
     return (
       <RoleAssignment 
         room={currentRoom}
-        currentPlayerName={playerName}
-        onGameStart={() => {
-          // Depende del modo de juego
-          if (currentRoom.debateMode) {
-            // MODO CON LLAMADA: Empezar con debate
-            setGamePhase('debate');
-          } else {
-            // MODO SIN LLAMADA: Empezar con preguntas
-            setGamePhase('question');
-          }
+        currentPlayer={currentPlayer}
+        assignedPlayer={currentPlayer.assigned_player}
+        onReady={() => {
+          sendMessage('player_ready', {
+            playerId: playerId,
+            is_ready: true,
+            phase: 'role_assignment'
+          });
         }}
       />
     );
   }
 
   // 7. Sala de espera normal
-  if (currentRoom && gamePhase === 'waiting') {
+  if (currentRoom && currentPhase === 'waiting') {
     return (
       <RoomComponent 
-        room={currentRoom} 
-        playerName={playerName}
-        onGameStart={() => setGamePhase('role_assignment')}
+        room={currentRoom}
+        currentPlayer={currentPlayer}
+        connectionStatus={connectionStatus}
+        onGameStart={() => {
+          if (isHost) {
+            sendMessage('start_game', { playerId: playerId });
+          }
+        }}
+        onLeaveRoom={() => {
+          sendMessage('player_leave', { playerId: playerId });
+          setCurrentRoom(null);
+          setPlayerId('');
+          setCurrentView('main');
+        }}
       />
     );
   }
 
   // ========== MENÚ PRINCIPAL ==========
-  // ... (el resto del código del menú principal se mantiene igual)
-  // Vista principal con tres botones
   if (currentView === 'main') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white p-4">
@@ -171,6 +267,18 @@ const App: React.FC = () => {
           <p className="text-gray-400 text-lg max-w-2xl mx-auto">
             ¿Tienes lo que se necesita para descubrir al impostor?
           </p>
+          
+          {/* Estado de conexión */}
+          {currentRoom && (
+            <div className="mt-4 p-3 bg-gray-800 rounded-lg inline-block">
+              <div className={`inline-block w-3 h-3 rounded-full mr-2 ${
+                isConnected ? 'bg-green-500' : 'bg-red-500'
+              }`}></div>
+              <span className="text-sm">
+                {isConnected ? 'Conectado' : 'Desconectado'} - Sala: {currentRoom.code}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Botones principales */}
@@ -258,7 +366,7 @@ const App: React.FC = () => {
             </span>
           </button>
 
-          {/* Input del nombre (siempre visible) */}
+          {/* Input del nombre */}
           <div>
             <input
               type="text"
@@ -286,23 +394,19 @@ const App: React.FC = () => {
           onClick={() => setCurrentView('main')}
           className="mb-6 relative inline-flex items-center py-2 px-4 overflow-hidden font-medium text-gray-300 transition-all duration-150 ease-in-out rounded-lg hover:pl-8 hover:pr-4 bg-gray-800 border-2 border-gray-600 group"
         >
-          <span className="absolute left-0 pl-2 duration-200 ease-out -translate-x-12 group-hover:translate-x-0">
-            <svg className="w-5 h-5 text-gray-300" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M9.06134 18.1227L3 12.0613M3 12.0613L9.06134 6M3 12.0613H20.9999" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-          <span className="absolute left-2 duration-200 ease-out translate-x-0 group-hover:translate-x-12 opacity-100 group-hover:opacity-0">
-            <svg className="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path d="M9.06134 18.1227L3 12.0613M3 12.0613L9.06134 6M3 12.0613H20.9999" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-          <span className="ml-6 transition-colors duration-200 ease-in-out group-hover:text-white">
-            Volver
-          </span>
+          {/* ... botón volver ... */}
         </button>
         <CreateRoom 
-          onRoomCreated={(room) => {
+          onRoomCreated={(room: Room) => {
             setCurrentRoom(room);
+            // Si el playerId viene en el room o lo obtenemos de otra forma
+            // Por ejemplo, si el jugador host es el primero en la lista
+            if (room.players && room.players.length > 0) {
+              const hostPlayer = room.players.find(player => player.is_host);
+              if (hostPlayer) {
+                setPlayerId(hostPlayer.id);
+              }
+            }
             setCurrentView('main');
           }}
           playerName={playerName}
@@ -335,8 +439,9 @@ const App: React.FC = () => {
           </span>
         </button>
         <JoinRoom 
-          onRoomJoined={(room) => {
+          onRoomJoined={(room: Room, newPlayerId: string) => {
             setCurrentRoom(room);
+            setPlayerId(newPlayerId);
             setCurrentView('main');
           }}
           playerName={playerName}
@@ -367,73 +472,22 @@ const App: React.FC = () => {
             Volver
           </span>
         </button>
-        
-        <div className="max-w-4xl mx-auto bg-gray-800 rounded-xl p-8">
-          <h2 className="text-3xl font-bold mb-8 text-center">Cómo Jugar</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Reglas Básicas */}
-            <div className="bg-gray-700 p-6 rounded-lg">
-              <h3 className="text-xl font-bold mb-4 text-green-400">Reglas Básicas</h3>
-              <ul className="space-y-3 text-gray-300">
-                <li>• 4-15 jugadores por partida</li>
-                <li>• 5-10 rondas para encontrar al impostor</li>
-                <li>• Los jugadores se les asigna un futbolista</li>
-                <li>• El impostor NO sabe su futbolista</li>
-                <li>• Preguntas y votaciones cada ronda</li>
-              </ul>
-            </div>
-
-            {/* Objetivo */}
-            <div className="bg-gray-700 p-6 rounded-lg">
-              <h3 className="text-xl font-bold mb-4 text-blue-400">Objetivo</h3>
-              <ul className="space-y-3 text-gray-300">
-                <li>• <strong>Jugadores:</strong> Encontrar al impostor</li>
-                <li>• <strong>Impostor:</strong> Engañar a los demás</li>
-                <li>• Votaciones eliminan jugadores</li>
-                <li>• Si eliminan al impostor, ganan los jugadores</li>
-                <li>• Si el impostor sobrevive, gana él</li>
-              </ul>
-            </div>
-
-            {/* Cómo Descubrir al Impostor */}
-            <div className="bg-gray-700 p-6 rounded-lg md:col-span-2">
-              <h3 className="text-xl font-bold mb-4 text-yellow-400">Pistas</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-300">
-                <div>
-                  <h4 className="font-bold mb-2">Señales del Impostor:</h4>
-                  <ul className="space-y-1">
-                    <li>• Respuestas vagas o genéricas</li>
-                    <li>• Dudas sobre datos futbolísticos</li>
-                    <li>• Cambia su historia frecuentemente</li>
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="font-bold mb-2">Estrategias:</h4>
-                  <ul className="space-y-1">
-                    <li>• Haz preguntas específicas</li>
-                    <li>• Observa las reacciones</li>
-                    <li>• Coordina votaciones con tu equipo</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center mt-8">
-            <button
-              onClick={() => setCurrentView('main')}
-              className="bg-purple-600 hover:bg-purple-700 px-8 py-3 rounded-lg font-bold transition-colors"
-            >
-              ¡Entendido! Jugar Ahora
-            </button>
-          </div>
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-4xl font-bold text-center mb-8">Cómo Jugar</h1>
+          {/* Agrega aquí el contenido de cómo jugar */}
         </div>
       </div>
     );
   }
 
-  return null;
+  return (
+    <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
+        <p>Cargando...</p>
+      </div>
+    </div>
+  );
 };
 
 export default App;

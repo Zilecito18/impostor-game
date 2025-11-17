@@ -12,12 +12,13 @@ const DebatePhase: React.FC<DebatePhaseProps> = ({
   currentPlayer, 
   onDebateComplete 
 }) => {
-  const [timeLeft, setTimeLeft] = useState(room.debateTime * 60); // Convertir a segundos
+  // ✅ CORREGIDO: Usar snake_case
+  const [timeLeft, setTimeLeft] = useState(room.debate_time * 60); // Convertir a segundos
   const [hasFinished, setHasFinished] = useState(false);
   const [finishedPlayers, setFinishedPlayers] = useState<string[]>([]);
 
-  // Jugadores vivos
-  const alivePlayers = room.players.filter(player => player.isAlive);
+  // ✅ CORREGIDO: Usar snake_case
+  const alivePlayers = room.players.filter(player => player.is_alive);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -90,7 +91,8 @@ const DebatePhase: React.FC<DebatePhaseProps> = ({
         <div className="bg-gray-800 rounded-lg p-8 mb-8">
           <div className="flex justify-between items-center mb-6">
             <div className="text-left">
-              <h2 className="text-2xl font-bold">Ronda {room.currentRound} de {room.totalRounds}</h2>
+              {/* ✅ CORREGIDO: Usar snake_case */}
+              <h2 className="text-2xl font-bold">Ronda {room.current_round} de {room.total_rounds}</h2>
               <p className="text-gray-400">Tiempo de Debatir</p>
             </div>
             <div className="text-right">
@@ -100,7 +102,8 @@ const DebatePhase: React.FC<DebatePhaseProps> = ({
                 {formatTime(timeLeft)}
               </div>
               <div className="text-gray-400">
-                {room.debateTime} {room.debateTime === 1 ? 'minuto' : 'minutos'}
+                {/* ✅ CORREGIDO: Usar snake_case */}
+                {room.debate_time} {room.debate_time === 1 ? 'minuto' : 'minutos'}
               </div>
             </div>
           </div>
@@ -191,7 +194,8 @@ const DebatePhase: React.FC<DebatePhaseProps> = ({
         </div>
 
         {/* Información para llamadas externas */}
-        {!room.debateMode && (
+        {/* ✅ CORREGIDO: Usar snake_case */}
+        {!room.debate_mode && (
           <div className="mt-4 bg-blue-900 border border-blue-600 rounded-lg p-4">
             <h4 className="font-bold text-blue-300 mb-2">Modo Llamada Externa</h4>
             <p className="text-blue-200 text-sm">
