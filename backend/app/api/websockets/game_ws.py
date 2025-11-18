@@ -92,12 +92,22 @@ async def handle_message(room_code: str, message: dict, websocket: WebSocket):
     msg_type = message.get("type")
 
     handlers = {
+        # 👥 Jugadores
         "player_join": handle_player_join,
         "player_leave": handle_player_leave,
+        "player_ready": handle_player_ready,  # ✅ NUEVO - CRÍTICO
+        
+        # 🎮 Juego
         "game_start": handle_start_game,
         "player_answer": handle_submit_answer,
         "player_vote": handle_cast_vote,
-        "chat_message": handle_chat_message
+        
+        # 💬 Chat
+        "chat_message": handle_chat_message,
+        
+        # 🔄 Sincronización (NUEVOS)
+        "sync_game_state": handle_sync_game_state,
+        "get_game_state": handle_get_game_state
     }
 
     handler = handlers.get(msg_type)
@@ -105,6 +115,7 @@ async def handle_message(room_code: str, message: dict, websocket: WebSocket):
     if handler:
         await handler(room_code, message, websocket)
     else:
+        print(f"❌ Tipo de mensaje no manejado: {msg_type}")
         await manager.send_personal(websocket, {
             "type": "error",
             "message": f"Tipo de mensaje desconocido: {msg_type}"
@@ -189,27 +200,45 @@ async def handle_cast_vote(room_code: str, message: dict, websocket: WebSocket):
     voted_player_id = message.get("votedPlayerId")
     round_id = message.get("roundId")
 
-    await game_service.cast_vote(room_code, player_id, voted_player_id)
+    success = await game_service.cast_vote(room_code, player_id, voted_player_id)
+    
+    if not success:
+        await manager.send_personal(websocket, {
+            "type": "error", 
+            "message": "Error procesando voto"
+        })
+        return
+
+    current_votes = game_service.get_current_votes(room_code)
+    all_votes_received = await game_service.all_votes_received(room_code)
 
     await manager.broadcast_to_room(room_code, {
         "type": "vote_submitted",
         "playerId": player_id,
         "votedPlayerId": voted_player_id,
         "roundId": round_id,
-        "currentVotes": game_service.get_current_votes(room_code),
-        "allVotesReceived": await game_service.all_votes_received(room_code)
+        "currentVotes": current_votes,
+        "allVotesReceived": all_votes_received
     })
 
-    if await game_service.all_votes_received(room_code):
+    # ✅ SOLO avanzar si TODOS han votado
+    if all_votes_received:
+        print("🗳️ Todos han votado, calculando resultados...")
         result = await game_service.calculate_voting_result(room_code)
+        
+        # ✅ ELIMINAR AL JUGADO VOTADO (esto puede faltar en tu game_service)
+        if result.get("eliminated_player"):
+            eliminated_id = result["eliminated_player"]["id"]
+            await game_service.eliminate_player(room_code, eliminated_id)
 
         await manager.broadcast_to_room(room_code, {
             "type": "voting_complete",
-            "result": result,
+            "votingResults": result.get("results", []),
             "eliminatedPlayer": result.get("eliminated_player"),
-            "nextPhase": "results"
+            "wasImpostor": result.get("was_impostor", False),
+            "nextPhase": "results",
+            "room": room_service.get_room(room_code).dict()  # ✅ Enviar room actualizado
         })
-
 # ============================
 # 💬 CHAT
 # ============================
@@ -220,4 +249,89 @@ async def handle_chat_message(room_code: str, message: dict, websocket: WebSocke
         "playerId": message.get("playerId"),
         "message": message.get("message"),
         "timestamp": time.time()
+    })
+    
+# ============================
+# ✅ PLAYER READY - HANDLER CRÍTICO (FALTANTE)
+# ============================
+
+async def handle_player_ready(room_code: str, message: dict, websocket: WebSocket):
+    player_id = message.get("playerId")
+    is_ready = message.get("is_ready", True)
+    phase = message.get("phase")  # "role_assignment", "question", "debate", etc.
+    
+    print(f"🎯 Player {player_id} ready for phase {phase}")
+
+    # Marcar jugador como listo en esta fase
+    success = await game_service.mark_player_ready(room_code, player_id, phase, is_ready)
+    
+    if not success:
+        await manager.send_personal(websocket, {
+            "type": "error", 
+            "message": "Error marcando jugador como listo"
+        })
+        return
+
+    # Obtener estado actualizado
+    room = room_service.get_room(room_code)
+    if not room:
+        return
+
+    # Notificar a todos que un jugador está listo
+    await manager.broadcast_to_room(room_code, {
+        "type": "player_ready_update",
+        "playerId": player_id,
+        "phase": phase,
+        "isReady": is_ready,
+        "readyPlayers": await game_service.get_ready_players(room_code, phase),
+        "totalPlayers": len(room.players),
+        "room": room.dict()
+    })
+
+    # ✅ VERIFICAR SI TODOS ESTÁN LISTOS PARA AVANZAR FASE
+    all_ready = await game_service.all_players_ready(room_code, phase)
+    
+    if all_ready:
+        print(f"🚀 Todos listos en fase {phase}, avanzando...")
+        
+        # Avanzar a la siguiente fase
+        next_phase_data = await game_service.advance_game_phase(room_code)
+        
+        if next_phase_data:
+            await manager.broadcast_to_room(room_code, {
+                "type": "phase_advanced",
+                "previousPhase": phase,
+                "currentPhase": next_phase_data.get("current_phase"),
+                "currentRound": next_phase_data.get("current_round"),
+                "message": f"Avanzando a {next_phase_data.get('current_phase')}",
+                "room": room.dict(),
+                "gameState": next_phase_data
+            })
+
+# ============================
+# 🔄 SYNC HANDLERS (FALTANTES)
+# ============================
+
+async def handle_sync_game_state(room_code: str, message: dict, websocket: WebSocket):
+    """Sincronizar estado del juego para jugadores que se reconectan"""
+    player_id = message.get("playerId")
+    room = room_service.get_room(room_code)
+    
+    if room:
+        await manager.send_personal(websocket, {
+            "type": "game_state_sync",
+            "room": room.dict(),
+            "gameState": await game_service.get_game_state(room_code),
+            "timestamp": time.time()
+        })
+
+async def handle_get_game_state(room_code: str, message: dict, websocket: WebSocket):
+    """Obtener estado actual del juego"""
+    room = room_service.get_room(room_code)
+    game_state = await game_service.get_game_state(room_code)
+    
+    await manager.send_personal(websocket, {
+        "type": "game_state",
+        "room": room.dict() if room else None,
+        "gameState": game_state
     })
