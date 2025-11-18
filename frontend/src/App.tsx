@@ -16,7 +16,6 @@ interface GameRoom extends Room {
   current_votes?: { [playerId: string]: string };
   voting_results?: any[];
   game_winner?: 'impostor' | 'players';
-  // No necesitas redefinir current_round y current_phase porque ya están en Room
 }
 
 const App: React.FC = () => {
@@ -29,28 +28,63 @@ const App: React.FC = () => {
     gameState, 
     isConnected, 
     connectionStatus, 
-    sendMessage, 
+    sendMessage 
   } = useWebSocket(currentRoom?.code || null);
 
   // ✅ Hacer type assertion para gameState
   const gameRoom = gameState as GameRoom | null;
 
+  // ✅ Sincronización mejorada
   useEffect(() => {
     if (gameState && gameState.code) {
-      console.log('🔄 App: Sincronizando room desde WebSocket:', gameState.code);
-      setCurrentRoom(gameState);
-    }
-  }, [gameState]);
-
-  useEffect(() => {
-    if (currentRoom && playerName && playerId) {
-      console.log('🔗 App: Uniendo a sala via WebSocket');
-      sendMessage('player_join', {
-        playerId: playerId,
-        playerName: playerName
+      console.log('🔄 App: Sincronizando room desde WebSocket:', {
+        code: gameState.code,
+        phase: gameState.current_phase,
+        round: gameState.current_round,
+        players: gameState.players?.length
       });
+      
+      // Solo actualizar si realmente cambió algo importante
+      if (!currentRoom || 
+          currentRoom.code !== gameState.code ||
+          currentRoom.current_phase !== gameState.current_phase ||
+          currentRoom.current_round !== gameState.current_round) {
+        setCurrentRoom(gameState);
+      }
     }
-  }, [currentRoom, playerName, playerId, sendMessage]);
+  }, [gameState, currentRoom]);
+
+  // ✅ Re-sincronización periódica
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      if (currentRoom && isConnected) {
+        console.log('🔄 Re-sincronizando estado del juego...');
+        sendMessage('sync_game_state', {
+          playerId: playerId,
+          roomCode: currentRoom.code
+        });
+      }
+    }, 10000); // Cada 10 segundos
+
+    return () => clearInterval(syncInterval);
+  }, [currentRoom, isConnected, playerId, sendMessage]);
+
+  // ✅ Verificar desincronización
+  useEffect(() => {
+    if (currentRoom && gameRoom && currentRoom.code === gameRoom.code) {
+      if (currentRoom.current_phase !== gameRoom.current_phase) {
+        console.warn('⚠️ DESINCRONIZACIÓN DETECTADA:', {
+          localPhase: currentRoom.current_phase,
+          serverPhase: gameRoom.current_phase,
+          localRound: currentRoom.current_round,
+          serverRound: gameRoom.current_round
+        });
+        
+        // Forzar sincronización con el servidor
+        setCurrentRoom(gameRoom);
+      }
+    }
+  }, [currentRoom, gameRoom]);
 
   const currentPhase = gameRoom?.current_phase || 'waiting';
   const currentRound = gameRoom?.current_round || 1;
@@ -83,6 +117,31 @@ const App: React.FC = () => {
 
   const currentPlayer = findCurrentPlayer();
   const isHost = !!currentPlayer.is_host;
+
+  // ✅ Pantalla de sincronización cuando hay desincronización
+  if (currentRoom && gameRoom && currentRoom.current_phase !== gameRoom.current_phase) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-yellow-900 to-orange-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
+          <h2 className="text-2xl font-bold mb-2">Sincronizando...</h2>
+          <p className="text-yellow-200 mb-4">Actualizando estado del juego</p>
+          <div className="bg-yellow-800 border border-yellow-600 rounded-lg p-4 max-w-md mx-auto">
+            <p className="text-sm">
+              <strong>Local:</strong> {currentRoom.current_phase} (Ronda {currentRoom.current_round})<br/>
+              <strong>Servidor:</strong> {gameRoom.current_phase} (Ronda {gameRoom.current_round})
+            </p>
+          </div>
+          <button
+            onClick={() => setCurrentRoom(gameRoom)}
+            className="mt-4 bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-lg font-semibold"
+          >
+            Forzar Sincronización
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ========== FLUJO DEL JUEGO ==========
 
@@ -212,23 +271,13 @@ const App: React.FC = () => {
     );
   }
 
-    if (currentPhase === 'question' && currentRoom && currentRoom.debate_mode) {
-    // Enviar ready automáticamente para saltar esta fase
-    useEffect(() => {
-      sendMessage('player_ready', {
-        playerId: playerId,
-        is_ready: true,
-        phase: 'question'
-      });
-    }, []);
-    
+  // 5b. Si está en modo debate y llega a fase de preguntas, usar componente separado
+  if (currentPhase === 'question' && currentRoom && currentRoom.debate_mode) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
-          <p>Saltando fase de preguntas (Modo Debate)...</p>
-        </div>
-      </div>
+      <AutoSkipQuestionPhase 
+        playerId={playerId}
+        sendMessage={sendMessage}
+      />
     );
   }
 
@@ -276,6 +325,24 @@ const App: React.FC = () => {
   if (currentView === 'main') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white p-4">
+        {/* Botón de sincronización manual */}
+        {currentRoom && (
+          <div className="fixed top-4 right-4 z-50">
+            <button
+              onClick={() => {
+                sendMessage('sync_game_state', {
+                  playerId: playerId,
+                  roomCode: currentRoom.code
+                });
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+              title="Sincronizar estado del juego"
+            >
+              🔄 Sinc
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="text-center mb-12">
           <h1 
@@ -414,18 +481,30 @@ const App: React.FC = () => {
           onClick={() => setCurrentView('main')}
           className="mb-6 relative inline-flex items-center py-2 px-4 overflow-hidden font-medium text-gray-300 transition-all duration-150 ease-in-out rounded-lg hover:pl-8 hover:pr-4 bg-gray-800 border-2 border-gray-600 group"
         >
-          {/* ... botón volver ... */}
+          <span className="absolute left-0 pl-2 duration-200 ease-out -translate-x-12 group-hover:translate-x-0">
+            <svg className="w-5 h-5 text-gray-300" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M9.06134 18.1227L3 12.0613M3 12.0613L9.06134 6M3 12.0613H20.9999" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span className="absolute left-2 duration-200 ease-out translate-x-0 group-hover:translate-x-12 opacity-100 group-hover:opacity-0">
+            <svg className="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M9.06134 18.1227L3 12.0613M3 12.0613L9.06134 6M3 12.0613H20.9999" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <span className="ml-6 transition-colors duration-200 ease-in-out group-hover:text-white">
+            Volver
+          </span>
         </button>
         <CreateRoom 
           onRoomCreated={(room: Room) => {
             setCurrentRoom(room);
-            // Si el playerId viene en el room o lo obtenemos de otra forma
-            // Por ejemplo, si el jugador host es el primero en la lista
-            if (room.players && room.players.length > 0) {
-              const hostPlayer = room.players.find(player => player.is_host);
-              if (hostPlayer) {
-                setPlayerId(hostPlayer.id);
-              }
+            // Buscar el playerId del host en los jugadores
+            const hostPlayer = room.players?.find(player => player.is_host);
+            if (hostPlayer) {
+              setPlayerId(hostPlayer.id);
+            } else if (room.players && room.players.length > 0) {
+              // Si no hay host, usar el primer jugador
+              setPlayerId(room.players[0].id);
             }
             setCurrentView('main');
           }}
@@ -505,6 +584,30 @@ const App: React.FC = () => {
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
         <p>Cargando...</p>
+      </div>
+    </div>
+  );
+};
+
+// ✅ Componente para saltar automáticamente preguntas en modo debate
+const AutoSkipQuestionPhase: React.FC<{
+  playerId: string;
+  sendMessage: (type: string, data: any) => void;
+}> = ({ playerId, sendMessage }) => {
+  useEffect(() => {
+    // Enviar ready automáticamente al montar el componente
+    sendMessage('player_ready', {
+      playerId: playerId,
+      is_ready: true,
+      phase: 'question'
+    });
+  }, [playerId, sendMessage]);
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
+        <p>Saltando fase de preguntas (Modo Debate)...</p>
       </div>
     </div>
   );
